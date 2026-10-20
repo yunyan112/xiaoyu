@@ -128,7 +128,11 @@
       wrap.appendChild(body);
     } else {
       wrap.appendChild(body);
-      wrap.appendChild(el('div', 'av', '云'));
+      const mine = el('img', 'av');
+      mine.src = 'assets/me.jpg';
+      mine.alt = '';
+      mine.onerror = () => { if (mine.parentNode) mine.replaceWith(el('div', 'av', '云')); };
+      wrap.appendChild(mine);
     }
     return wrap;
   }

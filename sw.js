@@ -1,5 +1,5 @@
 /* 余小渔 · 离线缓存：只缓存外壳，不缓存聊天（聊天在 localStorage） */
-const CACHE = 'yuxiaoyu-v3';
+const CACHE = 'yuxiaoyu-v4';
 const SHELL = [
   './',
   './index.html',
@@ -10,6 +10,7 @@ const SHELL = [
   './manifest.webmanifest',
   './assets/avatar-192.png',
   './assets/avatar-512.png',
+  './assets/me.jpg',
   './stickers/01_happy.png',
   './stickers/02_shy.png',
   './stickers/03_angry.png',

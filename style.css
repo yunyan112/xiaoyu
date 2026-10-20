@@ -61,7 +61,7 @@ body{
 .msg.her{justify-content:flex-start}
 .msg.me{justify-content:flex-end}
 .msg .av{width:36px;height:36px;border-radius:50%;object-fit:cover;flex:0 0 auto;margin-top:2px}
-.msg.me .av{
+.msg.me div.av{
   display:grid;place-items:center;font-size:14px;font-weight:600;color:#0E0E10;
   background:linear-gradient(140deg,#8FD3F4,#4FA3E0);
 }
