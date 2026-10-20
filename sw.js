@@ -1,11 +1,14 @@
-/* 余小渔 · 离线缓存：只缓存外壳，不缓存聊天（聊天在 localStorage） */
-const CACHE = 'yuxiaoyu-v8';
+/* 余小渔 · 缓存策略：先问网络，网不好才用缓存
+ * （以前是缓存优先，结果改了代码手机上永远是旧版）
+ */
+const CACHE = 'yuxiaoyu-v9';
 const SHELL = [
   './',
   './index.html',
   './style.css',
   './app.js',
   './core.js',
+  './persona.js',
   './stickers.js',
   './manifest.webmanifest',
   './assets/avatar-192.png',
@@ -36,24 +39,29 @@ self.addEventListener('install', (e) => {
 
 self.addEventListener('activate', (e) => {
   e.waitUntil(
-    caches.keys().then((ks) => Promise.all(ks.filter((k) => k !== CACHE).map((k) => caches.delete(k))))
+    caches.keys()
+      .then((ks) => Promise.all(ks.filter((k) => k !== CACHE).map((k) => caches.delete(k))))
       .then(() => self.clients.claim())
   );
 });
 
 self.addEventListener('fetch', (e) => {
   const url = new URL(e.request.url);
-  if (e.request.method !== 'GET' || url.pathname.includes('/api/')) return;
+  if (e.request.method !== 'GET') return;
+  if (url.pathname.includes('/api/')) return;
+  if (url.origin !== location.origin) return;
+
   e.respondWith(
-    caches.match(e.request).then((hit) => {
-      if (hit) return hit;
-      return fetch(e.request).then((res) => {
-        if (res.ok && url.origin === location.origin) {
+    fetch(e.request)
+      .then((res) => {
+        if (res && res.ok) {
           const copy = res.clone();
-          caches.open(CACHE).then((c) => c.put(e.request, copy));
+          caches.open(CACHE).then((c) => c.put(e.request, copy)).catch(() => {});
         }
         return res;
-      }).catch(() => caches.match('./index.html'));
-    })
+      })
+      .catch(() =>
+        caches.match(e.request).then((hit) => hit || caches.match('./index.html'))
+      )
   );
 });

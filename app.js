@@ -3,6 +3,7 @@
   'use strict';
 
   const LS_KEY = 'yuxiaoyu.v1';
+  const VERSION = 'v9 · 2026-10-20 21:30';
   const $ = (s) => document.querySelector(s);
 
   const els = {
@@ -16,7 +17,7 @@
     stickerPick: $('#stickerPick'),
     stats: $('#stats'), filePick: $('#filePick'), importPick: $('#importPick'),
     banner: $('#banner'), bannerText: $('#bannerText'), bannerBtn: $('#bannerBtn'),
-    btnExport: $('#btnExport'), btnImport: $('#btnImport'), btnReset: $('#btnReset')
+    btnExport: $('#btnExport'), btnImport: $('#btnImport'), btnReset: $('#btnReset'), btnUpdate: $('#btnUpdate')
   };
 
   /* ---------------- 存储 ---------------- */
@@ -654,7 +655,7 @@
       });
     }
     const days = Math.max(1, Math.round((Date.now() - state.createdAt) / 86400000));
-    els.stats.textContent = `聊了 ${days} 天 · ${state.mood.count} 句 · 亲密度 ${Math.round(state.mood.i)} · ${state.mood.stage}`;
+    els.stats.textContent = `聊了 ${days} 天 · ${state.mood.count} 句 · 亲密度 ${Math.round(state.mood.i)} · ${state.mood.stage}\n版本 ${VERSION}`;
   }
 
   function openSheet() { renderSettings(); els.sheet.classList.remove('hidden'); }
@@ -729,6 +730,20 @@
     };
 
     els.btnExport.onclick = exportData;
+    els.btnUpdate.onclick = async () => {
+      toast('正在清缓存…');
+      try {
+        if ('serviceWorker' in navigator) {
+          const regs = await navigator.serviceWorker.getRegistrations();
+          await Promise.all(regs.map((r) => r.unregister()));
+        }
+        if (window.caches) {
+          const ks = await caches.keys();
+          await Promise.all(ks.map((k) => caches.delete(k)));
+        }
+      } catch (e) { /* 忽略 */ }
+      setTimeout(() => location.reload(), 400);
+    };
     els.btnImport.onclick = () => els.importPick.click();
     els.importPick.onchange = async () => {
       const f = els.importPick.files[0];
