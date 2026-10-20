@@ -1,0 +1,88 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover,maximum-scale=1,user-scalable=no">
+<meta name="theme-color" content="#0E0E10">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<title>余小渔</title>
+<link rel="manifest" href="manifest.webmanifest">
+<link rel="icon" href="assets/avatar-192.png">
+<link rel="apple-touch-icon" href="assets/avatar-192.png">
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+<div id="app">
+  <header id="bar">
+    <img class="av" src="assets/avatar-192.png" alt="">
+    <div class="who">
+      <div class="nm">余小渔</div>
+      <div class="st" id="status">在呢</div>
+    </div>
+    <button class="icon" id="btnMore" aria-label="设置">⋯</button>
+  </header>
+
+  <main id="log"></main>
+
+  <div id="composer">
+    <button class="icon" id="btnPic" aria-label="图片">＋</button>
+    <button class="icon" id="btnSticker" aria-label="表情">☺</button>
+    <textarea id="input" rows="1" placeholder="和小鱼说点什么…" enterkeyhint="send"></textarea>
+    <button id="btnSend">发送</button>
+  </div>
+
+  <div id="stickerPanel" class="panel">
+    <div class="panel-head"><span>发个表情</span><button class="link" id="closeSticker">收起</button></div>
+    <div class="grid" id="stickerGrid"></div>
+  </div>
+
+  <div id="sheet" class="sheet hidden">
+    <div class="sheet-card">
+      <div class="sheet-head"><b>聊天设置</b><button class="link" id="closeSheet">完成</button></div>
+      <div class="sheet-body">
+        <div class="row">
+          <label>主动消息</label>
+          <div class="seg" id="segProactive">
+            <button data-v="high">高</button><button data-v="mid">中</button><button data-v="low">低</button>
+          </div>
+        </div>
+        <div class="hint" id="proactiveHint"></div>
+
+        <div class="row">
+          <label>她会发贴纸</label>
+          <label class="switch"><input type="checkbox" id="optSticker"><i></i></label>
+        </div>
+
+        <div class="sep">直连模型（推荐）</div>
+        <input id="apiKey" class="field" type="password" placeholder="sk-... 填上就直连 DeepSeek，不需要服务器" autocomplete="off">
+        <div class="hint">密钥只存在这台设备的浏览器里，不会上传到任何地方。手机上填一次就行。</div>
+
+        <div class="sep">或者走中转地址（可选）</div>
+        <input id="endpoint" class="field" placeholder="https://你的服务.pages.dev">
+        <div class="hint">不填就忽略。填了会优先走中转，用于藏密钥的部署方式。</div>
+
+        <div class="sep">她记住的事</div>
+        <div id="facts" class="facts"></div>
+
+        <div class="sep">记录</div>
+        <div class="btns">
+          <button class="ghost" id="btnExport">导出备份</button>
+          <button class="ghost" id="btnImport">导入备份</button>
+          <button class="ghost danger" id="btnReset">清空重来</button>
+        </div>
+        <div class="hint" id="stats"></div>
+      </div>
+    </div>
+  </div>
+
+  <input type="file" id="filePick" accept="image/*" hidden>
+  <input type="file" id="importPick" accept="application/json,.json" hidden>
+  <div id="toast" class="toast"></div>
+</div>
+<script src="stickers.js"></script>
+<script src="core.js"></script>
+<script src="persona.js"></script>
+<script src="app.js"></script>
+</body>
+</html>
