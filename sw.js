@@ -1,7 +1,7 @@
-/* 余小渔 · 缓存策略：先问网络，网不好才用缓存
+﻿/* 余小渔 · 缓存策略：先问网络，网不好才用缓存
  * （以前是缓存优先，结果改了代码手机上永远是旧版）
  */
-const CACHE = 'yuxiaoyu-v18';
+const CACHE = 'yuxiaoyu-v20';
 const SHELL = [
   './',
   './index.html',

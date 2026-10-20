@@ -414,7 +414,7 @@
       body: JSON.stringify({
         model,
         stream: true,
-        temperature: 1.2,
+        temperature: 0.95,
         max_tokens: 140,
         frequency_penalty: 0.4,
         messages: [
