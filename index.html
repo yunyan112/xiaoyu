@@ -23,6 +23,11 @@
     <button class="icon" id="btnMore" aria-label="设置">⋯</button>
   </header>
 
+  <div id="banner" class="banner hidden">
+    <span id="bannerText"></span>
+    <button class="link" id="bannerBtn">去设置</button>
+  </div>
+
   <main id="log"></main>
 
   <div id="composer">
@@ -52,6 +57,14 @@
           <label>她会发贴纸</label>
           <label class="switch"><input type="checkbox" id="optSticker"><i></i></label>
         </div>
+
+        <div class="row">
+          <label>她会刷热点</label>
+          <div class="seg" id="segHot">
+            <button data-v="off">关</button><button data-v="low">少</button><button data-v="mid">中</button><button data-v="high">多</button>
+          </div>
+        </div>
+        <div class="hint" id="hotHint"></div>
 
         <div class="sep">直连模型（推荐）</div>
         <input id="apiKey" class="field" type="password" placeholder="sk-... 填上就直连 DeepSeek，不需要服务器" autocomplete="off">

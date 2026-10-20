@@ -119,7 +119,7 @@ const Core = (function () {
     if ((m = text.match(/(?:喜欢|在玩|玩)\s*([^\s，。！!?？\n]{1,10}(?:游戏|原神|王者|LOL|星铁))/))) f['游戏'] = m[1];
     return f;
   }
-  const FACT_LABEL = { 称呼: '叫你', 课表: '课表', 口味: '口味', 纪念日: '日子', 最近忙: '最近', 游戏: '在玩' };
+  const FACT_LABEL = { 称呼: '叫你', 课表: '课表', 口味: '口味', 纪念日: '日子', 最近忙: '最近', 游戏: '在玩', 爱好: '喜欢', 在忙: '在忙' };
 
   function updateSummary(state) {
     const topics = (state.summary && state.summary.topics) || [];
@@ -138,48 +138,110 @@ const Core = (function () {
       ['08:03', '早八路上买了个茶叶蛋，差点噎着'],
       ['08:35', '教室最后一排，前面人挡得我什么都看不见'],
       ['09:10', '困得把笔掉地上两次'],
-      ['10:20', '课间去买水，碰到室友在楼梯口吃辣条']
+      ['10:20', '课间去买水，碰到室友在楼梯口吃辣条'],
+      ['09:40', '老师点名点到我，答了声到手都在抖'],
+      ['11:10', '把昨天没画完的速写补了两笔，还是丑']
     ],
     noon: [
       ['11:50', '食堂番茄牛腩，牛肉老得能打人'],
       ['12:20', '排队二十分钟，打到最后一个鸡腿'],
       ['12:40', '和室友分了一份杨枝甘露，甜到齁'],
-      ['13:05', '回宿舍路上被晒得睁不开眼']
+      ['13:05', '回宿舍路上被晒得睁不开眼'],
+      ['12:55', '躺床上刷了半小时短视频，说好只看五分钟'],
+      ['13:20', '在阳台给那盆多肉浇了点水，叶子有点蔫']
     ],
     afternoon: [
       ['14:30', '专业课老师讲得飞快，笔记没跟上'],
       ['15:40', '在图书馆占了个靠窗的位置，风一吹就困'],
       ['16:20', '刷到一个猫猫从沙发滑下去的视频，笑了好久'],
-      ['17:00', '陪室友去快递站，她买了三个箱子']
+      ['17:00', '陪室友去快递站，她买了三个箱子'],
+      ['15:10', '看了一集新番，男主太蠢了我直接跳过'],
+      ['16:50', '画了半张画，线条全歪了，气死']
     ],
     evening: [
       ['18:30', '晚饭吃得太急，胃有点撑'],
       ['19:10', '操场走了两圈，风挺大的'],
       ['20:00', '玩了两把 2048，第二把 512 就死了'],
-      ['20:50', '想点奶茶，看了半天还是没下单']
+      ['20:50', '想点奶茶，看了半天还是没下单'],
+      ['19:40', '刷到那个热搜了，评论区吵得比剧还好看'],
+      ['21:10', '跟室友聊到高中，笑到打鸣']
     ],
     night: [
       ['21:30', '背单词背到 sleep，眼皮开始打架'],
       ['22:40', '洗澡水忽冷忽热，冻得我尖叫'],
       ['23:20', '躺床上刷视频，说明天一定早睡'],
-      ['00:30', '室友还在打游戏，灯没关，烦']
+      ['00:30', '室友还在打游戏，灯没关，烦'],
+      ['23:50', '在写一个很小的故事，写了一半自己先笑了']
     ]
   };
   const SLOT = (h) => (h < 10 ? 'morning' : h < 14 ? 'noon' : h < 18 ? 'afternoon' : h < 22 ? 'evening' : 'night');
+
+  /* 她自己能起的话头：全是她的事，不是等他开口 */
+  const TOPICS = [
+    ['我最近在追一部剧，男主蠢得我想退订', '你平时看剧吗'],
+    ['食堂新开了一个窗口，糖醋里脊居然不酸', '我今天吃了两份，有点撑'],
+    ['那盆多肉好像真的不行了，叶子软趴趴的', '我可能真的不适合养东西'],
+    ['我室友今天六点就起来背单词', '我佩服到失眠'],
+    ['画了一天，最后发现透视全错', '我现在看着它就想哭'],
+    ['刷到一个特别离谱的热搜', '评论区比事情本身还精彩'],
+    ['今天专业课老师讲了两个小时他自己的故事', '一句重点没有'],
+    ['我在想要不要报个画画的班', '但又觉得有点贵'],
+    ['突然想吃火锅', '这个天气就该吃火锅'],
+    ['我可能有点懒', '今天什么都没干，还挺开心'],
+    ['刚看到一个猫猫从沙发滑下去的视频，笑了十分钟', '发给我室友她也笑疯了'],
+    ['我今天在图书馆坐了一下午，一页都没看进去', '旁边那个人一直在抖腿']
+  ];
+  let lastTopicAt = 0;
+  function openTopic() {
+    const now = Date.now();
+    if (now - lastTopicAt < 90000) return null;
+    lastTopicAt = now;
+    return pickFresh(TOPICS, 'topic').slice(0, 2);
+  }
 
   function lifeFor(dateStr) {
     const r = seeded(hashStr('life' + dateStr));
     const out = [];
     ['morning', 'noon', 'afternoon', 'evening', 'night'].forEach((slot, idx) => {
-      // 一天 2~4 件事
-      const density = 0.55 + (idx >= 2 && idx <= 3 ? 0.75 : 0.1);
+      // 一天 3~6 件事，白天更密
+      const density = 0.78 + (idx >= 1 && idx <= 3 ? 0.12 : 0);
       if (r() < density) {
         const pool = LIFE_POOL[slot];
         const e = pool[Math.floor(r() * pool.length)];
-        out.push({ time: e[0], text: e[1], slot, mood: /烦|老|撑|尖叫|难受|死/.test(e[1]) ? 'bad' : 'ok' });
+        out.push({ time: e[0], text: e[1], slot, mood: /烦|老|撑|尖叫|难受|死|气死|歪/.test(e[1]) ? 'bad' : 'ok' });
       }
     });
     return out;
+  }
+
+  /* 她此刻大概在干嘛：让界面上的状态是活的 */
+  const ACTIVITY = {
+    0: ['在宿舍，灯还亮着', '准备睡了，还在刷手机'],
+    1: ['还没睡，躺着看天花板', '在跟你聊天，别的不想干'],
+    2: ['早该睡了'],
+    7: ['刚爬起来，头发还乱着', '在食堂找吃的'],
+    8: ['在去教室的路上', '早八，最后一排'],
+    9: ['在上课，偷偷看手机', '在教室，人有点飘'],
+    10: ['课间，在走廊吹风', '在买水'],
+    11: ['快下课了，饿了', '在等下课铃'],
+    12: ['在食堂排队', '吃饭吃到一半'],
+    13: ['在宿舍躺着', '刷手机，说好只睡十分钟'],
+    14: ['在上课，或者应该在', '在图书馆占位'],
+    15: ['在图书馆，困', '在上专业课'],
+    16: ['刚下课，在回宿舍', '在操场附近晃'],
+    17: ['在食堂或者在校门口', '纠结吃什么'],
+    18: ['在吃饭', '在宿舍歇着'],
+    19: ['在操场走圈', '在追剧'],
+    20: ['在宿舍，闲', '在看视频'],
+    21: ['在写作业或者画画', '刷到好笑的'],
+    22: ['在洗漱', '在背单词'],
+    23: ['快睡了', '躺床上刷手机']
+  };
+  function activity(now = new Date()) {
+    const h = new Date(now).getHours();
+    const pool = ACTIVITY[h] || ACTIVITY[0];
+    const r = seeded(hashStr('act' + dayKey(now) + h));
+    return pool[Math.floor(r() * pool.length)];
   }
   function occurredLife(life, now = new Date()) {
     const today = dayKey(now);
@@ -272,8 +334,8 @@ const Core = (function () {
       follow: ['下次点菜我帮你挑', '那我也不吃这个了', '你挑食还挺严重']
     },
     generic: {
-      open: ['嗯嗯', '然后呢', '真的假的', '欸，展开说说', '我听着呢', '哦哦'],
-      follow: ['后来呢', '那你现在怎么样', '我有点想你了', '继续说呀']
+      open: ['嗯嗯', '然后呢', '真的假的', '欸，展开说说', '我听着呢', '哦哦', '这样啊', '啊这', '嗯，我在'],
+      follow: ['后来呢', '那你现在怎么样', '继续说呀', '听起来还行', '那挺好', '']
     }
   };
 
@@ -309,7 +371,7 @@ const Core = (function () {
     if (/(不吃|爱吃|喜欢吃|能吃|不能吃|讨厌吃)/.test(t)) return 'taste';
     if (/可爱|好棒|喜欢你|厉害|漂亮|乖/.test(t)) return 'praise';
     if (/睡|晚安|困了|熬夜|失眠/.test(t)) return 'sleep';
-    if (/饿|吃饭|吃什么|食堂|外卖|奶茶|火锅|夜宵|喝的|点的/.test(t)) return 'food';
+    if (/饿|吃|食堂|外卖|奶茶|火锅|夜宵|喝|饭|辣|甜|咸/.test(t)) return 'food';
     if (/难过|烦|不开心|emo|难受|想哭|委屈|压力/.test(t)) return 'sad';
     if (/哈哈|笑死|太好笑|笑疯|裂开/.test(t)) return 'laugh';
     if (/累|忙|下课|上课|作业|考试|加班/.test(t)) return 'tired';
@@ -373,23 +435,50 @@ const Core = (function () {
       return { parts: pick(AI_DEFLECT), sticker: 'question', intent };
     }
 
+    // 他说的话很短、或者根本没内容 —— 她才自己起话头，不能抢话
+    const shortMsg = isLazy(text) || [...text.trim()].length <= 6;
+    const topicChance = shortMsg ? 1 : (intent === 'generic' ? 0.28 : 0);
+    if ((intent === 'generic' || intent === 'bored') && topicChance && rnd() < topicChance) {
+      const hotList = (state.hot && state.hot.items) || [];
+      if (hotList.length && rnd() < 0.45) {
+        const h = pick(hotList);
+        return {
+          parts: ['刚刷到' + h, pick(['挺离谱的', '你看这个', '笑死我了', '现在什么事都有'])],
+          sticker: null,
+          intent: 'hot'
+        };
+      }
+      const t = openTopic();
+      if (t) {
+        let parts = t.slice();
+        if (intent === 'bored' && rnd() < 0.6) {
+          const a = activity(now);
+          parts = [/^在/.test(a) ? '我' + a : a].concat(parts);
+        }
+        return { parts, sticker: null, intent: 'topic' };
+      }
+    }
+
     const pack = T[intent] || T.generic;
     const parts = [];
     parts.push(pickFresh(pack.open, intent + 'o'));
 
-    // 70% 追问；精力低时更容易不追问
-    const followChance = m.a < 38 ? 0.55 : 0.72;
+    // 70% 追问；精力低时更容易不追问；生疏阶段更少追问
+    const followChance = m.a < 38 ? 0.45 : (m.stage === '生疏' ? 0.5 : 0.62);
     let follow = '';
     if (rnd() < followChance) {
       follow = pickFresh(pack.follow, intent + 'f');
     }
 
-    // 2~3 轮里插一次"生活"
-    if (life.length && rnd() < 0.34 && (intent === 'generic' || intent === 'bored' || intent === 'greeting')) {
-      const e = pick(life.slice(-2));
-      follow = follow ? follow : '我今天' + e.text;
-      if (follow) parts.push(follow);
-      else parts.push('今天' + e.text);
+    // 她自己的生活：两三句里就会冒一句，但别老说同一件
+    if (life.length && rnd() < 0.46) {
+      const cands = life.slice(-4);
+      const texts = cands.map((x) => x.text);
+      const chosen = pickFresh(texts, 'life');
+      const e = cands.find((x) => x.text === chosen) || cands[0];
+      const lead = rnd() < 0.5 ? '今天' : '我刚';
+      follow = lead + e.text;
+      parts.push(follow);
       return finish(parts, intent, m);
     }
 
@@ -409,6 +498,9 @@ const Core = (function () {
   let lastStickerId = null;
   let lastStickerAt = 0;
 
+  const EMOJI = ['😂', '🥺', '😴', '😭', '🤔', '😅', '🙈', '✨', '🫠', '😌', '🥹'];
+  const KAOMOJI = ['(´･ω･ˋ)', '(///▽///)', '>_<', '0v0', '(๑•̀ㅂ•́)و✧'];
+
   function finish(parts, intent, m) {
     const out = [];
     for (const p of parts) {
@@ -419,8 +511,16 @@ const Core = (function () {
       else { out.push(chars.slice(0, 25).join('')); out.push(chars.slice(25, 50).join('')); }
       if (out.length >= 3) break;
     }
+    // 偶尔挂一个 emoji 或颜文字，像真人随手打上去的
+    if (out.length && rnd() < 0.18) {
+      const i = out.length - 1;
+      const mark = rnd() < 0.72 ? pick(EMOJI) : pick(KAOMOJI);
+      if (!/[a-zA-Z]$/.test(out[i])) out[i] = out[i] + ' ' + mark;
+    }
     let sticker = null;
-    if (rnd() < 0.30) {
+    const minStage = { 生疏: 0.06, 熟络: 0.16, 黏人: 0.22, 离不开: 0.26 };
+    const rate = minStage[(m && m.stage) || '生疏'] || 0.06;
+    if (rnd() < rate) {
       const s = stickerFor(intent, m);
       // 同一张不要连发
       if (!(s === lastStickerId && Date.now() - lastStickerAt < 6 * 60000)) {
@@ -475,7 +575,7 @@ const Core = (function () {
     clamp, rnd, pick, pickFresh, hashStr, seeded, dayKey, hm, WEEK, pad,
     isQuiet, mealNow, initialMood, relaxMood, interact, moodLabel, stageFor,
     extractFacts, FACT_LABEL, updateSummary,
-    lifeFor, occurredLife, ensureLife,
+    lifeFor, occurredLife, ensureLife, activity,
     compose, intentOf, splitReply, rhythm, partDelay, stamp,
     T, stickerFor
   };

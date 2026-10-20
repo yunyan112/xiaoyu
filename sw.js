@@ -1,5 +1,5 @@
 /* 余小渔 · 离线缓存：只缓存外壳，不缓存聊天（聊天在 localStorage） */
-const CACHE = 'yuxiaoyu-v4';
+const CACHE = 'yuxiaoyu-v8';
 const SHELL = [
   './',
   './index.html',

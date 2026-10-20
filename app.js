@@ -12,8 +12,10 @@
     closeSticker: $('#closeSticker'), toast: $('#toast'),
     segProactive: $('#segProactive'), proactiveHint: $('#proactiveHint'),
     optSticker: $('#optSticker'), endpoint: $('#endpoint'), apiKey: $('#apiKey'), facts: $('#facts'),
+    segHot: $('#segHot'), hotHint: $('#hotHint'),
     stickerPick: $('#stickerPick'),
     stats: $('#stats'), filePick: $('#filePick'), importPick: $('#importPick'),
+    banner: $('#banner'), bannerText: $('#bannerText'), bannerBtn: $('#bannerBtn'),
     btnExport: $('#btnExport'), btnImport: $('#btnImport'), btnReset: $('#btnReset')
   };
 
@@ -26,11 +28,11 @@
       v: 1,
       msgs: [],
       mood: Core.initialMood(now),
-      facts: { 称呼: '云烟' },
+      facts: { 称呼: '云烟', 爱好: '画画', 在忙: '考研' },
       summary: { text: '刚认识，还没聊太多', topics: [], at: now },
       custom: [],
       life: null,
-      settings: { proactive: 'mid', quiet: [2, 7], stickers: true, endpoint: '', apiKey: '', lastProactive: 0 },
+      settings: { proactive: 'mid', quiet: [2, 7], stickers: true, endpoint: '', apiKey: '', hot: 'off', lastProactive: 0 },
       createdAt: now
     };
   }
@@ -42,7 +44,7 @@
       const d = defaults();
       s.settings = Object.assign(d.settings, s.settings || {});
       s.mood = Object.assign(Core.initialMood(), s.mood || {});
-      s.facts = Object.assign({ 称呼: '云烟' }, s.facts || {});
+      s.facts = Object.assign({ 称呼: '云烟', 爱好: '画画', 在忙: '考研' }, s.facts || {});
       s.summary = Object.assign(d.summary, s.summary || {});
       s.msgs = Array.isArray(s.msgs) ? s.msgs : [];
       s.custom = Array.isArray(s.custom) ? s.custom : [];
@@ -172,6 +174,15 @@
     statusTimer = setTimeout(() => setStatus(back, false), ms || 2200);
   }
 
+  /* ---------------- 连接状态 ---------------- */
+  function showBanner(text) {
+    els.bannerText.textContent = text;
+    els.banner.classList.remove('hidden');
+  }
+  function hideBanner() {
+    els.banner.classList.add('hidden');
+  }
+
   /* ---------------- 打字动画 ---------------- */
   function typingNode() {
     const wrap = el('div', 'msg her');
@@ -196,6 +207,10 @@
   const wait = (ms) => new Promise((r) => setTimeout(r, ms));
 
   async function playReply(parts, stickerId) {
+    parts = (parts || []).filter(Boolean);
+    // 她不发只有表情、没有一个字的消息
+    if (!parts.length && stickerId) parts = ['喏'];
+    if (!parts.length) return;
     const text = parts.join('|');
     const r = Core.rhythm(text);
     if (r.late) await wait(Math.min(r.late, 9000));
@@ -210,11 +225,13 @@
       await wait(600);
       await addMsg({ who: 'her', kind: 'sticker', src: stickerId, t: Date.now() });
     }
-    setStatus('在呢', false);
+    setStatus(Core.activity(new Date()), false);
   }
 
   /* ---------------- 发送 ---------------- */
   let busy = false;
+  let thinkTimer = 0;
+  let lastUserText = '';
   let recentSends = [];
 
   async function send(text) {
@@ -229,12 +246,26 @@
     recentSends.push(Date.now());
     recentSends = recentSends.filter((t) => Date.now() - t < 20000);
     state.summary = Core.updateSummary(state);
+    lastUserText = text;
     save();
 
+    // 先愣一下再回，中间留出他连发的空档；他再说一句就把计时器重排
+    scheduleReply();
+  }
+
+  function scheduleReply() {
+    clearTimeout(thinkTimer);
+    const hold = 700 + Math.random() * 500; // 0.7~1.2 秒
+    thinkTimer = setTimeout(runReply, hold);
+  }
+
+  async function runReply() {
+    thinkTimer = 0;
+    if (busy) { scheduleReply(); return; }
     busy = true;
     els.send.disabled = true;
     try {
-      const reply = await getReply(text);
+      const reply = await getReply(lastUserText);
       await playReply(reply.parts, reply.sticker);
     } catch (e) {
       console.warn(e);
@@ -248,16 +279,21 @@
   async function getReply(text) {
     const key = (state.settings.apiKey || '').trim();
     if (key) {
-      try { return await callDirect(text, key); }
-      catch (e) { toast(errHint(e)); }
+      try {
+        const r = await callDirect(text, key);
+        hideBanner();
+        return r;
+      } catch (e) {
+        showBanner(errHint(e) + '，这条是她本地回的');
+      }
     }
     const ep = (state.settings.endpoint || '').trim();
     if (ep) {
       try {
         const r = await callModel(ep, text);
-        if (r && r.parts && r.parts.length) return r;
+        if (r && r.parts && r.parts.length) { hideBanner(); return r; }
       } catch (e) {
-        toast('中转没连上，先用本地的');
+        showBanner('中转没连上，这条是她本地回的');
       }
     }
     // 连发三条以上：合并成一句回应
@@ -501,6 +537,74 @@
   function openSticker() { els.panel.classList.add('open'); }
   function closeSticker() { els.panel.classList.remove('open'); }
 
+  /* ---------------- 她刷到的热点 ---------------- */
+  const HOT_POOL = [
+    '猫咖里那只橘猫胖到上不去台阶',
+    '大学食堂的免费汤里终于有蛋花了',
+    '有人把宿舍改成了小型画室',
+    '降温了，短袖和羽绒服同时出现在操场上',
+    '图书馆的座位预约系统又崩了',
+    '一个男生在操场跑了三十圈给室友过生日',
+    '新出的奶茶联名，杯子好看但不好喝',
+    '某高校的猫学会了开自动门',
+    '宿舍楼下开始卖烤肠了',
+    '有人在二手平台卖「考研上岸锦鲤」',
+    '上课偷偷画画被老师夸了',
+    '凌晨的便利店永远有人在吃关东煮'
+  ];
+
+  function localHot(n) {
+    const r = Core.seeded(Core.hashStr('hot' + Core.dayKey()));
+    const start = Math.floor(r() * HOT_POOL.length);
+    return Array.from({ length: n }, (_, i) => HOT_POOL[(start + i) % HOT_POOL.length]);
+  }
+
+  async function genHot(key, n) {
+    const res = await fetch('https://api.deepseek.com/chat/completions', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', Authorization: 'Bearer ' + key },
+      body: JSON.stringify({
+        model: 'deepseek-chat',
+        temperature: 1.3,
+        max_tokens: 240,
+        messages: [
+          {
+            role: 'system',
+            content:
+              '你是一个普通的大二女生，正在刷手机。列出 ' + n + ' 条你今天刷到的内容，可能是热搜、短视频、帖子、朋友圈的说法。' +
+              '要求：每条不超过 16 个字；偏日常、校园、吃、宠物、搞笑、吐槽；' +
+              '不涉及真实人名、政治时事、灾难事故；不编号、不解释，每条一行。'
+          },
+          { role: 'user', content: '随便列几条' }
+        ]
+      })
+    });
+    if (!res.ok) throw new Error('hot ' + res.status);
+    const j = await res.json();
+    const txt = (j.choices && j.choices[0] && j.choices[0].message && j.choices[0].message.content) || '';
+    return txt.split('\n')
+      .map((s) => s.replace(/^[\d.、\s\-*]+/, '').trim())
+      .filter((s) => s.length >= 4 && s.length <= 30)
+      .slice(0, n);
+  }
+
+  async function ensureHot(force) {
+    const lvl = state.settings.hot || 'off';
+    if (lvl === 'off') { state.hot = null; return; }
+    const ttl = lvl === 'high' ? 7 * 3600e3 : 20 * 3600e3;
+    if (!force && state.hot && Date.now() - state.hot.at < ttl) return;
+    const n = lvl === 'low' ? 3 : lvl === 'mid' ? 5 : 6;
+    let items = null;
+    let src = 'local';
+    const key = (state.settings.apiKey || '').trim();
+    if (key) {
+      try { items = await genHot(key, n); src = 'model'; } catch (e) { items = null; }
+    }
+    if (!items || !items.length) { items = localHot(n); src = 'local'; }
+    state.hot = { at: Date.now(), items, src, lvl };
+    save();
+  }
+
   /* ---------------- 设置 ---------------- */
   function renderSettings() {
     const s = state.settings;
@@ -511,8 +615,31 @@
       low: '她只会等你先开口，不再主动发'
     }[s.proactive];
     els.optSticker.checked = !!s.stickers;
+    [...els.segHot.children].forEach((b) => b.classList.toggle('on', b.dataset.v === (s.hot || 'off')));
     els.endpoint.value = s.endpoint || '';
     els.apiKey.value = s.apiKey || '';
+
+    const hotText = {
+      off: '关掉之后她不会提任何外面的事',
+      low: '每天 1 次 · 3 条 · 只当背景，不太会提',
+      mid: '每天 1 次 · 5 条 · 聊天里偶尔冒出',
+      high: '每 7 小时 1 次 · 6 条 · 主动说得更勤'
+    };
+    let hint = hotText[s.hot || 'off'];
+    if (s.hot && s.hot !== 'off' && state.hot) {
+      const t = new Date(state.hot.at);
+      const when = `${Core.pad(t.getHours())}:${Core.pad(t.getMinutes())}`;
+      hint += `\n上次刷新 ${when} · ${state.hot.items.length} 条 · ${state.hot.src === 'model' ? '模型生成' : '内置'}`;
+    }
+    els.hotHint.textContent = hint;
+    if (s.hot && s.hot !== 'off') {
+      const a = document.createElement('a');
+      a.href = 'javascript:void(0)';
+      a.textContent = ' 立即刷新';
+      a.style.color = 'var(--accent)';
+      a.onclick = async () => { toast('正在刷新…'); await ensureHot(true); renderSettings(); toast('刷新好了'); };
+      els.hotHint.appendChild(a);
+    }
     const keys = Object.keys(state.facts || {});
     els.facts.innerHTML = '';
     if (!keys.length) {
@@ -572,12 +699,24 @@
     els.closeSticker.onclick = closeSticker;
     els.more.onclick = openSheet;
     els.closeSheet.onclick = closeSheet;
+    els.bannerBtn.onclick = openSheet;
     els.sheet.addEventListener('click', (e) => { if (e.target === els.sheet) closeSheet(); });
 
     [...els.segProactive.children].forEach((b) => {
       b.onclick = () => { state.settings.proactive = b.dataset.v; save(); renderSettings(); };
     });
     els.optSticker.onchange = () => { state.settings.stickers = els.optSticker.checked; save(); };
+    [...els.segHot.children].forEach((b) => {
+      b.onclick = async () => {
+        state.settings.hot = b.dataset.v;
+        save();
+        renderSettings();
+        if (b.dataset.v !== 'off') {
+          await ensureHot();
+          renderSettings();
+        }
+      };
+    });
     els.endpoint.onchange = () => {
       state.settings.endpoint = els.endpoint.value.trim().replace(/\/$/, '');
       save();
@@ -678,20 +817,45 @@
   }
 
   /* ---------------- 启动 ---------------- */
+  async function opener() {
+    const key = (state.settings.apiKey || '').trim();
+    if (key) {
+      try {
+        const r = await callDirect('（我刚通过你的好友申请）', key);
+        if (r && r.parts && r.parts.length) {
+          hideBanner();
+          await playReply(r.parts, r.sticker);
+          return;
+        }
+      } catch (e) {
+        showBanner(errHint(e) + '，开场先用本地的');
+      }
+    }
+    const open = [
+      ['欸，被你找到啦', '今天怎么样'],
+      ['在呢', '刚好想找个人说话'],
+      ['嗯？你是……', '哦，是你啊']
+    ];
+    showBanner('还没填密钥，现在是她本地回你');
+    await playReply(Core.pick(open), 'happy');
+  }
+
   async function boot() {
     await buildStickers();
     bind();
     state.mood = Core.relaxMood(state.mood);
     Core.ensureLife(state, new Date());
     await renderAll();
+    setStatus(Core.activity(new Date()), false);
+    setInterval(() => { if (!busy) setStatus(Core.activity(new Date()), false); }, 60000);
+    ensureHot().catch(() => {});
 
     if (!state.msgs.length) {
-      const open = [
-        ['欸，被你找到啦', '今天怎么样'],
-        ['在呢', '刚好想找个人说话']
-      ];
-      setTimeout(() => playReply(Core.pick(open), 'happy'), 700);
+      setTimeout(opener, 700);
     } else {
+      if (!(state.settings.apiKey || '').trim() && !(state.settings.endpoint || '').trim()) {
+        showBanner('还没填密钥，现在是她本地回你');
+      }
       setTimeout(maybeProactive, 900);
     }
     save();
