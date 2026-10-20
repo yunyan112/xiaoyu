@@ -233,12 +233,13 @@
   let busy = false;
   let thinkTimer = 0;
   let lastUserText = '';
+  let lastUserKind = 'text';
+  let replyQueued = false;
   let recentSends = [];
 
   async function send(text) {
     text = (text || '').trim();
     if (!text) return;
-    if (busy) { toast('先等小鱼把这几条发完'); return; }
 
     await addMsg({ who: 'me', kind: 'text', text, t: Date.now() });
     Core.ensureLife(state, new Date());
@@ -248,23 +249,24 @@
     recentSends = recentSends.filter((t) => Date.now() - t < 20000);
     state.summary = Core.updateSummary(state);
     lastUserText = text;
+    lastUserKind = 'text';
     save();
 
-    // 先愣一下再回，中间留出他连发的空档；他再说一句就把计时器重排
+    // 她在说话的时候你也可以继续说，说完她会回你最新那句
+    if (busy) { replyQueued = true; return; }
     scheduleReply();
   }
 
   function scheduleReply() {
     clearTimeout(thinkTimer);
-    const hold = 700 + Math.random() * 500; // 0.7~1.2 秒
+    const hold = 700 + Math.random() * 500; // 0.7~1.2 秒的空档
     thinkTimer = setTimeout(runReply, hold);
   }
 
   async function runReply() {
     thinkTimer = 0;
-    if (busy) { scheduleReply(); return; }
+    if (busy) { replyQueued = true; return; }
     busy = true;
-    els.send.disabled = true;
     try {
       const reply = await getReply(lastUserText);
       await playReply(reply.parts, reply.sticker);
@@ -273,7 +275,7 @@
       await playReply(['欸，我这会儿有点卡…', '你刚说什么来着'], null);
     } finally {
       busy = false;
-      els.send.disabled = false;
+      if (replyQueued) { replyQueued = false; scheduleReply(); }
     }
   }
 
@@ -301,6 +303,29 @@
     if (recentSends.length >= 3 && Math.random() < 0.6) {
       const base = Core.compose(text, state);
       return { parts: ['你一下子说这么多…'].concat(base.parts.slice(0, 2)), sticker: base.sticker };
+    }
+    // 他发的是表情包
+    if (lastUserKind === 'sticker') {
+      return {
+        parts: Core.pick([
+          ['干嘛', '发这个'],
+          ['哈哈你好烦', '我收下了'],
+          ['欸，你也学会这个了'],
+          ['这个表情好像你']
+        ]),
+        sticker: Math.random() < 0.3 ? 'love' : null
+      };
+    }
+    if (lastUserKind === 'image') {
+      return {
+        parts: Core.pick([
+          ['这是哪儿啊', '看着不错'],
+          ['咦', '你拍的？'],
+          ['唔…好看', '我也想去了'],
+          ['收到啦', '我收着']
+        ]),
+        sticker: Math.random() < 0.3 ? 'love' : null
+      };
     }
     return Core.compose(text, state);
   }
@@ -521,19 +546,22 @@
     toast('删掉了');
   }
   async function sendSticker(id) {
+    // 输入框里有字就先把它发出去，再来表情包（一句 + 一个表情连着发）
+    const pending = (els.input.value || '').trim();
+    if (pending) {
+      els.input.value = '';
+      autoGrow();
+      await send(pending);
+    }
+
     await addMsg({ who: 'me', kind: 'sticker', src: id, t: Date.now() });
     state.mood = Core.interact(state.mood, '（我发了个表情）');
+    lastUserText = '（发了张表情包）';
+    lastUserKind = 'sticker';
     save();
-    if (busy) return;
-    busy = true;
-    try {
-      const pool = [
-        ['干嘛', '发这个'],
-        ['哈哈你好烦', '我收下了'],
-        ['欸，你也学会这个了']
-      ];
-      await playReply(Core.pick(pool), Math.random() < 0.25 ? 'love' : null);
-    } finally { busy = false; }
+
+    if (busy) { replyQueued = true; return; }
+    scheduleReply();
   }
   function openSticker() { els.panel.classList.add('open'); }
   function closeSticker() { els.panel.classList.remove('open'); }
@@ -790,14 +818,11 @@
     imgCache.set(id, dataUrl);
     await addMsg({ who: 'me', kind: 'image', src: id, t: Date.now() });
     state.mood = Core.interact(state.mood, '（我发了张图）');
+    lastUserText = '（发了张图片）';
+    lastUserKind = 'image';
     save();
-    const replies = [
-      ['这是哪儿啊', '看着不错'],
-      ['咦', '你拍的？'],
-      ['唔…好看', '我也想去了'],
-      ['收到啦', '我收着']
-    ];
-    if (!busy) { busy = true; try { await playReply(Core.pick(replies), Math.random() < 0.3 ? 'love' : null); } finally { busy = false; } }
+    if (busy) { replyQueued = true; return; }
+    scheduleReply();
   }
 
   function compress(file) {
