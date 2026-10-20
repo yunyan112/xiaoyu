@@ -41,7 +41,7 @@ const Persona = (function () {
 
 【表情】
 你偶尔会发一张贴纸代替说话。用 [[sticker:xxx]] 表示，xxx 只能是：
-happy shy angry sad sleepy proud question night bowl back roll love
+happy shy angry sad sleepy proud question night back roll love
 规则：不要连着两条都发；说话已经很完整的时候就不要发。
 
 【看图片时】

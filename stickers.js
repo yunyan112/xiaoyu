@@ -1,5 +1,5 @@
 /* 余小渔 · 贴纸目录
- * 12 张：正面立绘差分 8 张 + 背影 1 张 + 梗图 1 张 + 动态 2 张
+ * 11 张：正面立绘差分 8 张 + 背影 1 张 + 动态 2 张
  */
 const STICKERS = [
   { id: '01_happy',  file: 'stickers/01_happy.png',  emo: 'happy',   label: '开心' },
@@ -10,7 +10,6 @@ const STICKERS = [
   { id: '06_proud',  file: 'stickers/06_proud.png',  emo: 'proud',   label: '得意' },
   { id: '07_question', file: 'stickers/07_question.png', emo: 'question', label: '问号' },
   { id: '08_night',  file: 'stickers/08_night.png',  emo: 'night',   label: '睡了' },
-  { id: '09_bowl',   file: 'stickers/09_bowl.png',   emo: 'bowl',    label: '自闭盆' },
   { id: '10_turnback', file: 'stickers/10_turnback.png', emo: 'back', label: '不理你' },
   { id: '11_roll',   file: 'stickers/11_roll.png',   emo: 'roll',    label: '打滚' },
   { id: '12_love',   file: 'stickers/12_love.png',   emo: 'love',    label: '比心' }
@@ -22,13 +21,13 @@ const STICKER_BY_EMO = STICKERS.reduce((m, s) => (m[s.emo] = s, m), {});
 const STICKER_FOR = {
   happy:   ['happy', 'love'],
   shy:     ['shy', 'love'],
-  angry:   ['angry', 'bowl'],
-  sad:     ['sad', 'bowl'],
+  angry:   ['angry'],
+  sad:     ['sad'],
   sleepy:  ['sleepy', 'night'],
   proud:   ['proud', 'happy'],
   confused: ['question', 'roll'],
   missing: ['back', 'roll'],
   love:    ['love', 'shy'],
-  tired:   ['sleepy', 'bowl'],
-  sorry:   ['sad', 'bowl']
+  tired:   ['sleepy'],
+  sorry:   ['sad']
 };

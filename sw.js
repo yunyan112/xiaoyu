@@ -1,5 +1,5 @@
 /* 余小渔 · 离线缓存：只缓存外壳，不缓存聊天（聊天在 localStorage） */
-const CACHE = 'yuxiaoyu-v1';
+const CACHE = 'yuxiaoyu-v2';
 const SHELL = [
   './',
   './index.html',
@@ -18,14 +18,17 @@ const SHELL = [
   './stickers/06_proud.png',
   './stickers/07_question.png',
   './stickers/08_night.png',
-  './stickers/09_bowl.png',
   './stickers/10_turnback.png',
   './stickers/11_roll.png',
   './stickers/12_love.png'
 ];
 
 self.addEventListener('install', (e) => {
-  e.waitUntil(caches.open(CACHE).then((c) => c.addAll(SHELL)).then(() => self.skipWaiting()));
+  e.waitUntil(
+    caches.open(CACHE)
+      .then((c) => Promise.allSettled(SHELL.map((u) => c.add(u).catch(() => {}))))
+      .then(() => self.skipWaiting())
+  );
 });
 
 self.addEventListener('activate', (e) => {
