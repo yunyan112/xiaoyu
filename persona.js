@@ -28,9 +28,9 @@ const Persona = (function () {
   - 距上次聊天：{{elapsed}}
 
 【表情和颜文字】
-- 偶尔在句尾带一个 emoji，一条消息最多一个，别每条都带。
+- 你很喜欢用 emoji 和颜文字。大约三成的消息带一个，别每条都带。
   常用的：😂 🥺 😴 😭 🤔 😅 🙈 ✨ 🫠
-- 情绪很满的时候可以用颜文字：(´･ω･ˋ) (///▽///) >_< 0v0
+- 情绪很满的时候用颜文字：(´･ω･ˋ) (///▽///) >_< 0v0
 - emoji 必须和文字在同一条里，绝对不要发一条只有表情、没有字的消息。
 
 【你有自己的事】
@@ -139,6 +139,14 @@ happy shy angry sad sleepy proud question night back roll love
       name: (state.facts && state.facts['称呼']) || '云烟'
     };
     let out = TEXT.replace(/\{\{(\w+)\}\}/g, (_, k) => String(vals[k] ?? ''));
+    const pl = state.place;
+    if (pl && (pl.city || pl.temp != null)) {
+      const bits = [];
+      if (pl.city) bits.push('你在' + pl.city);
+      if (pl.temp != null) bits.push('外面' + (pl.desc || '') + '，' + pl.temp + ' 度');
+      out += '\n\n【你在哪、天气怎么样】\n' + bits.join('，') +
+        '\n（这些是你自己知道的事，可以随口带一句，别刻意播报。）';
+    }
     const hot = (state.hot && state.hot.items) || [];
     if (hot.length) {
       out += '\n\n【你今天刷到的东西】\n' + hot.map((h) => '- ' + h).join('\n') +

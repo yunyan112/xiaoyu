@@ -66,6 +66,12 @@
         </div>
         <div class="hint" id="hotHint"></div>
 
+        <div class="row">
+          <label>定位和天气</label>
+          <label class="switch"><input type="checkbox" id="optPlace"><i></i></label>
+        </div>
+        <div class="hint" id="placeHint"></div>
+
         <div class="sep">直连模型（推荐）</div>
         <input id="apiKey" class="field" type="password" placeholder="sk-... 填上就直连 DeepSeek，不需要服务器" autocomplete="off">
         <div class="hint">密钥只存在这台设备的浏览器里，不会上传到任何地方。手机上填一次就行。</div>
@@ -89,7 +95,7 @@
     </div>
   </div>
 
-  <input type="file" id="filePick" accept="image/*" hidden>
+  <input type="file" id="filePick" hidden>
   <input type="file" id="stickerPick" accept="image/*" hidden multiple>
   <input type="file" id="importPick" accept="application/json,.json" hidden>
   <div id="toast" class="toast"></div>

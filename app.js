@@ -14,6 +14,7 @@
     segProactive: $('#segProactive'), proactiveHint: $('#proactiveHint'),
     optSticker: $('#optSticker'), endpoint: $('#endpoint'), apiKey: $('#apiKey'), facts: $('#facts'),
     segHot: $('#segHot'), hotHint: $('#hotHint'),
+    optPlace: $('#optPlace'), placeHint: $('#placeHint'),
     stickerPick: $('#stickerPick'),
     stats: $('#stats'), filePick: $('#filePick'), importPick: $('#importPick'),
     banner: $('#banner'), bannerText: $('#bannerText'), bannerBtn: $('#bannerBtn'),
@@ -32,8 +33,9 @@
       facts: { 称呼: '云烟', 爱好: '画画', 在忙: '考研' },
       summary: { text: '刚认识，还没聊太多', topics: [], at: now },
       custom: [],
+      seen: {},
       life: null,
-      settings: { proactive: 'mid', quiet: [2, 7], stickers: true, endpoint: '', apiKey: '', hot: 'off', lastProactive: 0 },
+      settings: { proactive: 'mid', quiet: [2, 7], stickers: true, endpoint: '', apiKey: '', hot: 'off', place: true, lastProactive: 0 },
       createdAt: now
     };
   }
@@ -49,6 +51,7 @@
       s.summary = Object.assign(d.summary, s.summary || {});
       s.msgs = Array.isArray(s.msgs) ? s.msgs : [];
       s.custom = Array.isArray(s.custom) ? s.custom : [];
+      s.seen = s.seen && typeof s.seen === 'object' ? s.seen : {};
       return s;
     } catch (e) { return defaults(); }
   }
@@ -110,6 +113,23 @@
       img.src = src || '';
       img.onload = scrollBottom;
       body = img;
+    } else if (m.kind === 'media') {
+      let blob = imgCache.get(m.src);
+      if (!blob) { blob = await IDB.get(m.src); if (blob) imgCache.set(m.src, blob); }
+      if (blob) {
+        const node = document.createElement(m.mtype === 'video' ? 'video' : 'audio');
+        node.controls = true;
+        node.src = URL.createObjectURL(blob);
+        node.className = m.mtype === 'video' ? 'vid' : 'aud';
+        if (m.mtype === 'video') node.onloadeddata = scrollBottom;
+        body = node;
+      } else {
+        body = el('div', 'bubble', '（文件找不到了）');
+      }
+    } else if (m.kind === 'file') {
+      const card = el('div', 'filecard');
+      card.innerHTML = '<b>' + esc(m.name) + '</b><span>' + fmtSize(m.size) + '</span>';
+      body = card;
     } else if (m.kind === 'sticker') {
       const img = el('img', 'sticker');
       if (String(m.src).startsWith('cs_')) {
@@ -234,6 +254,8 @@
   let thinkTimer = 0;
   let lastUserText = '';
   let lastUserKind = 'text';
+  let lastImageId = null;
+  let lastStickerSent = null;
   let replyQueued = false;
   let recentSends = [];
 
@@ -269,6 +291,7 @@
     busy = true;
     try {
       const reply = await getReply(lastUserText);
+      reply.sticker = pickHerSticker(reply.sticker);
       await playReply(reply.parts, reply.sticker);
     } catch (e) {
       console.warn(e);
@@ -283,7 +306,7 @@
     const key = (state.settings.apiKey || '').trim();
     if (key) {
       try {
-        const r = await callDirect(text, key);
+        const r = await callDirect(text, key, lastUserKind === 'image' ? lastImageId : null);
         hideBanner();
         return r;
       } catch (e) {
@@ -304,17 +327,25 @@
       const base = Core.compose(text, state);
       return { parts: ['你一下子说这么多…'].concat(base.parts.slice(0, 2)), sticker: base.sticker };
     }
-    // 他发的是表情包
+    // 他发的是表情包：记得他常发，但别每次都点破
     if (lastUserKind === 'sticker') {
-      return {
-        parts: Core.pick([
-          ['干嘛', '发这个'],
-          ['哈哈你好烦', '我收下了'],
-          ['欸，你也学会这个了'],
-          ['这个表情好像你']
-        ]),
-        sticker: Math.random() < 0.3 ? 'love' : null
-      };
+      const id = lastStickerSent || '';
+      state.seen = state.seen || {};
+      const n = (state.seen[id] || 0) + 1;
+      state.seen[id] = n;
+      save();
+
+      let parts = Core.pick([
+        ['这个表情好呆', '我喜欢'],
+        ['哈哈', '你哪来这么多'],
+        ['存了', '下次我也发'],
+        ['这什么', '好笑'],
+        ['你表情包好多', '我这个就不够了']
+      ]);
+      // 偶尔才点破，语气也要收着
+      if (n > 1 && Math.random() < 0.18) parts = ['这个你发过了', pickSoft()];
+      else if (n > 3 && Math.random() < 0.12) parts = ['你是不是特别喜欢这张', '我也觉得好用'];
+      return { parts, sticker: Math.random() < 0.3 ? 'roll' : null };
     }
     if (lastUserKind === 'image') {
       return {
@@ -325,6 +356,17 @@
           ['收到啦', '我收着']
         ]),
         sticker: Math.random() < 0.3 ? 'love' : null
+      };
+    }
+    if (lastUserKind === 'media' || lastUserKind === 'file') {
+      return {
+        parts: Core.pick([
+          ['我看看', '一会儿回你'],
+          ['收到', '这是你做的？'],
+          ['等下就听', '别催我'],
+          ['哇', '你还有这个']
+        ]),
+        sticker: null
       };
     }
     return Core.compose(text, state);
@@ -340,17 +382,32 @@
   }
 
   /* 直连 DeepSeek：不需要任何服务器 */
-  async function callDirect(text, key) {
+  async function callDirect(text, key, imageId) {
     const history = state.msgs
       .filter((m) => m.kind === 'text')
       .slice(-17, -1)
       .map((m) => ({ role: m.who === 'me' ? 'user' : 'assistant', content: m.text }));
 
+    // 有图就走视觉模型
+    let model = 'deepseek-chat';
+    let userContent = text;
+    if (imageId) {
+      let dataUrl = imgCache.get(imageId);
+      if (!dataUrl) dataUrl = await IDB.get(imageId);
+      if (typeof dataUrl === 'string' && dataUrl.indexOf('data:image') === 0) {
+        model = 'deepseek-v4-flash-vision-exp';
+        userContent = [
+          { type: 'text', text: text },
+          { type: 'image_url', image_url: { url: dataUrl } }
+        ];
+      }
+    }
+
     const res = await fetch('https://api.deepseek.com/chat/completions', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json', Authorization: 'Bearer ' + key },
       body: JSON.stringify({
-        model: 'deepseek-chat',
+        model,
         stream: true,
         temperature: 1.2,
         max_tokens: 140,
@@ -358,7 +415,7 @@
         messages: [
           { role: 'system', content: Persona.build(state, Date.now()) },
           ...history,
-          { role: 'user', content: text }
+          { role: 'user', content: userContent }
         ]
       })
     });
@@ -463,6 +520,20 @@
   }
 
   /* ---------------- 表情面板 ---------------- */
+  function pickSoft() {
+    return Core.pick(['不过我还是笑了', '但我还是收下了', '你别老发']);
+  }
+
+  /** 她也要发表情时：一部分概率用他收藏的那堆表情包 */
+  function pickHerSticker(builtin) {
+    if (!state.settings.stickers) return null;
+    const custom = state.custom || [];
+    if (custom.length && (builtin || Math.random() < 0.18)) {
+      if (Math.random() < 0.45) return Core.pick(custom).id;
+    }
+    return builtin;
+  }
+
   function section(label, hint) {
     const d = el('div', 'sec');
     d.appendChild(el('span', null, label));
@@ -558,6 +629,7 @@
     state.mood = Core.interact(state.mood, '（我发了个表情）');
     lastUserText = '（发了张表情包）';
     lastUserKind = 'sticker';
+    lastStickerSent = id;
     save();
 
     if (busy) { replyQueued = true; return; }
@@ -600,11 +672,12 @@
           {
             role: 'system',
             content:
-              '你是一个普通的大二女生，正在刷手机。列出 ' + n + ' 条你今天刷到的内容，可能是热搜、短视频、帖子、朋友圈的说法。' +
-              '要求：每条不超过 16 个字；偏日常、校园、吃、宠物、搞笑、吐槽；' +
-              '不涉及真实人名、政治时事、灾难事故；不编号、不解释，每条一行。'
+              '你叫余小渔，19 岁，大二。你喜欢画画、爱吃、追剧、看搞笑视频，也爱刷热搜但只关心有意思的那些。' +
+              '列出 ' + n + ' 条你今天在手机上刷到、而且你真的会点开看的内容。' +
+              '范围可以是：搞笑视频或梗、校园里的小事、好吃的店、画画相关、追剧吐槽、萌宠、偶尔一条大家都在讨论的大事。' +
+              '要求：每条不超过 16 个字；用真人口吻，不要标题党；不涉及真实人名、政治、灾难；不编号，每条一行。'
           },
-          { role: 'user', content: '随便列几条' }
+          { role: 'user', content: '我今天刷到了什么？' }
         ]
       })
     });
@@ -627,11 +700,60 @@
     let src = 'local';
     const key = (state.settings.apiKey || '').trim();
     if (key) {
-      try { items = await genHot(key, n); src = 'model'; } catch (e) { items = null; }
+      try {
+        items = await genHot(key, n);
+        src = 'model';
+      } catch (e) { items = null; }
     }
     if (!items || !items.length) { items = localHot(n); src = 'local'; }
     state.hot = { at: Date.now(), items, src, lvl };
     save();
+  }
+
+  /* ---------------- 定位和天气 ---------------- */
+  const WMO = {
+    0: '晴', 1: '晴间多云', 2: '多云', 3: '阴', 45: '有雾', 48: '雾凇',
+    51: '毛毛雨', 53: '小雨', 55: '中雨', 56: '冻雨', 57: '冻雨',
+    61: '小雨', 63: '中雨', 65: '大雨', 66: '冻雨', 67: '冻雨',
+    71: '小雪', 73: '中雪', 75: '大雪', 77: '米雪',
+    80: '阵雨', 81: '中阵雨', 82: '暴雨', 85: '阵雪', 86: '强阵雪',
+    95: '雷阵雨', 96: '雷阵雨伴冰雹', 99: '强雷暴'
+  };
+
+  async function updatePlace(force) {
+    if (!state.settings.place) return;
+    if (state.place && !force && Date.now() - state.place.at < 30 * 60000) return;
+    if (!navigator.geolocation) return;
+
+    const pos = await new Promise((res) => {
+      navigator.geolocation.getCurrentPosition(
+        (p) => res({ lat: p.coords.latitude, lon: p.coords.longitude }),
+        () => res(null),
+        { timeout: 9000, maximumAge: 30 * 60000, enableHighAccuracy: false }
+      );
+    });
+    if (!pos) return;
+
+    let city = '';
+    let temp = null;
+    let desc = '';
+    try {
+      const r = await fetch('https://api.bigdatacloud.net/data/reverse-geocode-client?latitude=' + pos.lat + '&longitude=' + pos.lon + '&localityLanguage=zh');
+      const j = await r.json();
+      city = j.city || j.locality || j.principalSubdivision || '';
+    } catch (e) { /* 查不到就算了 */ }
+    try {
+      const r = await fetch('https://api.open-meteo.com/v1/forecast?latitude=' + pos.lat + '&longitude=' + pos.lon + '&current=temperature_2m,weather_code&timezone=auto');
+      const j = await r.json();
+      if (j.current) {
+        temp = Math.round(j.current.temperature_2m);
+        desc = WMO[j.current.weather_code] || '';
+      }
+    } catch (e) { /* 同上 */ }
+
+    state.place = { at: Date.now(), city, temp, desc, lat: pos.lat, lon: pos.lon };
+    save();
+    renderSettings();
   }
 
   /* ---------------- 设置 ---------------- */
@@ -644,6 +766,14 @@
       low: '她只会等你先开口，不再主动发'
     }[s.proactive];
     els.optSticker.checked = !!s.stickers;
+    els.optPlace.checked = !!s.place;
+    if (state.place && state.place.city) {
+      els.placeHint.textContent = `${state.place.city} · ${state.place.desc} ${state.place.temp}° · 30 分钟更新一次`;
+    } else if (s.place) {
+      els.placeHint.textContent = '正在获取…（第一次会让你授权定位）';
+    } else {
+      els.placeHint.textContent = '关掉之后她不知道你在哪、外面什么天气';
+    }
     [...els.segHot.children].forEach((b) => b.classList.toggle('on', b.dataset.v === (s.hot || 'off')));
     els.endpoint.value = s.endpoint || '';
     els.apiKey.value = s.apiKey || '';
@@ -735,6 +865,12 @@
       b.onclick = () => { state.settings.proactive = b.dataset.v; save(); renderSettings(); };
     });
     els.optSticker.onchange = () => { state.settings.stickers = els.optSticker.checked; save(); };
+    els.optPlace.onchange = async () => {
+      state.settings.place = els.optPlace.checked;
+      save();
+      renderSettings();
+      if (state.settings.place) await updatePlace(true).catch(() => {});
+    };
     [...els.segHot.children].forEach((b) => {
       b.onclick = async () => {
         state.settings.hot = b.dataset.v;
@@ -791,9 +927,9 @@
     // 图片
     els.input.addEventListener('paste', (e) => {
       const it = [...(e.clipboardData || {}).items || []].find((x) => x.type.startsWith('image/'));
-      if (it) { e.preventDefault(); handleImage(it.getAsFile()); }
+      if (it) { e.preventDefault(); handleFile(it.getAsFile()); }
     });
-    els.filePick.onchange = () => { const f = els.filePick.files[0]; if (f) handleImage(f); els.filePick.value = ''; };
+    els.filePick.onchange = () => { const f = els.filePick.files[0]; if (f) handleFile(f); els.filePick.value = ''; };
     els.stickerPick.onchange = async () => {
       const files = [...els.stickerPick.files];
       els.stickerPick.value = '';
@@ -809,20 +945,56 @@
     els.input.style.height = Math.min(120, els.input.scrollHeight) + 'px';
   }
 
-  async function handleImage(file) {
+  async function handleFile(file) {
     if (!file) return;
-    if (file.size > 30 * 1024 * 1024) return toast('图太大了，30MB 以内');
-    const dataUrl = await compress(file);
-    const id = 'img_' + Date.now();
-    await IDB.put(id, dataUrl);
-    imgCache.set(id, dataUrl);
-    await addMsg({ who: 'me', kind: 'image', src: id, t: Date.now() });
-    state.mood = Core.interact(state.mood, '（我发了张图）');
-    lastUserText = '（发了张图片）';
-    lastUserKind = 'image';
+    if (file.size > 25 * 1024 * 1024) return toast('文件太大了，25MB 以内');
+    const type = file.type || '';
+    const id = 'f_' + Date.now();
+
+    if (type.startsWith('image/')) {
+      const dataUrl = await compress(file);
+      if (!dataUrl) return toast('这张图读不出来');
+      await IDB.put(id, dataUrl);
+      imgCache.set(id, dataUrl);
+      await addMsg({ who: 'me', kind: 'image', src: id, t: Date.now() });
+      state.mood = Core.interact(state.mood, '（我发了张图）');
+      lastUserText = '（发了张图片）';
+      lastUserKind = 'image';
+      lastImageId = id;
+    } else if (type.startsWith('video/') || type.startsWith('audio/')) {
+      await IDB.put(id, file);
+      await addMsg({
+        who: 'me', kind: 'media', src: id, t: Date.now(),
+        mtype: type.startsWith('video') ? 'video' : 'audio',
+        name: file.name || '', size: file.size
+      });
+      state.mood = Core.interact(state.mood, '（我发了个文件）');
+      lastUserText = type.startsWith('video') ? '（发了段视频）' : '（发了首歌）';
+      lastUserKind = 'media';
+    } else {
+      await IDB.put(id, file);
+      await addMsg({
+        who: 'me', kind: 'file', src: id, t: Date.now(),
+        name: file.name || '文件', size: file.size, mtype: type
+      });
+      state.mood = Core.interact(state.mood, '（我发了个文件）');
+      lastUserText = '（发了个文件：' + (file.name || '文件') + '）';
+      lastUserKind = 'file';
+    }
     save();
     if (busy) { replyQueued = true; return; }
     scheduleReply();
+  }
+
+  function fmtSize(n) {
+    if (!n) return '';
+    if (n < 1024) return n + ' B';
+    if (n < 1024 * 1024) return Math.round(n / 1024) + ' KB';
+    return (n / 1024 / 1024).toFixed(1) + ' MB';
+  }
+
+  function esc(s) {
+    return String(s).replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
   }
 
   function compress(file) {
@@ -889,6 +1061,8 @@
     setStatus(Core.activity(new Date()), false);
     setInterval(() => { if (!busy) setStatus(Core.activity(new Date()), false); }, 60000);
     ensureHot().catch(() => {});
+    setTimeout(() => updatePlace().catch(() => {}), 2500);
+    setInterval(() => { updatePlace().catch(() => {}); }, 30 * 60000);
 
     if (!state.msgs.length) {
       setTimeout(opener, 700);

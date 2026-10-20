@@ -517,14 +517,14 @@ const Core = (function () {
       if (out.length >= 3) break;
     }
     // 偶尔挂一个 emoji 或颜文字，像真人随手打上去的
-    if (out.length && rnd() < 0.18) {
+    if (out.length && rnd() < 0.32) {
       const i = out.length - 1;
-      const mark = rnd() < 0.72 ? pick(EMOJI) : pick(KAOMOJI);
+      const mark = rnd() < 0.66 ? pick(EMOJI) : pick(KAOMOJI);
       if (!/[a-zA-Z]$/.test(out[i])) out[i] = out[i] + ' ' + mark;
     }
     let sticker = null;
-    const minStage = { 生疏: 0.06, 熟络: 0.16, 黏人: 0.22, 离不开: 0.26 };
-    const rate = minStage[(m && m.stage) || '生疏'] || 0.06;
+    const minStage = { 生疏: 0.14, 熟络: 0.26, 黏人: 0.32, 离不开: 0.38 };
+    const rate = minStage[(m && m.stage) || '生疏'] || 0.14;
     if (rnd() < rate) {
       const s = stickerFor(intent, m);
       // 同一张不要连发
