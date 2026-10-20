@@ -12,6 +12,7 @@
     closeSticker: $('#closeSticker'), toast: $('#toast'),
     segProactive: $('#segProactive'), proactiveHint: $('#proactiveHint'),
     optSticker: $('#optSticker'), endpoint: $('#endpoint'), apiKey: $('#apiKey'), facts: $('#facts'),
+    stickerPick: $('#stickerPick'),
     stats: $('#stats'), filePick: $('#filePick'), importPick: $('#importPick'),
     btnExport: $('#btnExport'), btnImport: $('#btnImport'), btnReset: $('#btnReset')
   };
@@ -27,6 +28,7 @@
       mood: Core.initialMood(now),
       facts: { 称呼: '云烟' },
       summary: { text: '刚认识，还没聊太多', topics: [], at: now },
+      custom: [],
       life: null,
       settings: { proactive: 'mid', quiet: [2, 7], stickers: true, endpoint: '', apiKey: '', lastProactive: 0 },
       createdAt: now
@@ -43,6 +45,7 @@
       s.facts = Object.assign({ 称呼: '云烟' }, s.facts || {});
       s.summary = Object.assign(d.summary, s.summary || {});
       s.msgs = Array.isArray(s.msgs) ? s.msgs : [];
+      s.custom = Array.isArray(s.custom) ? s.custom : [];
       return s;
     } catch (e) { return defaults(); }
   }
@@ -70,7 +73,8 @@
     return {
       async put(k, v) { const db = await open(); return new Promise((res, rej) => { const t = db.transaction('m', 'readwrite'); t.objectStore('m').put(v, k); t.oncomplete = res; t.onerror = () => rej(t.error); }); },
       async get(k) { const db = await open(); return new Promise((res, rej) => { const t = db.transaction('m', 'readonly'); const q = t.objectStore('m').get(k); q.onsuccess = () => res(q.result); q.onerror = () => rej(q.error); }); },
-      async clear() { const db = await open(); return new Promise((res) => { const t = db.transaction('m', 'readwrite'); t.objectStore('m').clear(); t.oncomplete = res; }); }
+      async clear() { const db = await open(); return new Promise((res) => { const t = db.transaction('m', 'readwrite'); t.objectStore('m').clear(); t.oncomplete = res; }); },
+      async del(k) { const db = await open(); return new Promise((res, rej) => { const t = db.transaction('m', 'readwrite'); t.objectStore('m').delete(k); t.oncomplete = res; t.onerror = () => rej(t.error); }); }
     };
   })();
   const imgCache = new Map();
@@ -104,10 +108,16 @@
       img.onload = scrollBottom;
       body = img;
     } else if (m.kind === 'sticker') {
-      const s = STICKERS.find((x) => x.id === m.src);
       const img = el('img', 'sticker');
-      img.src = s ? s.file : 'stickers/01_happy.png';
-      img.alt = s ? s.label : '';
+      if (String(m.src).startsWith('cs_')) {
+        let src = imgCache.get(m.src);
+        if (!src) { src = await IDB.get(m.src); if (src) imgCache.set(m.src, src); }
+        img.src = src || '';
+      } else {
+        const s = STICKERS.find((x) => x.id === m.src);
+        img.src = s ? s.file : 'stickers/01_happy.png';
+        img.alt = s ? s.label : '';
+      }
       body = img;
     } else {
       body = el('div', 'bubble', m.text);
@@ -387,16 +397,87 @@
   }
 
   /* ---------------- 表情面板 ---------------- */
-  function buildStickers() {
+  function section(label, hint) {
+    const d = el('div', 'sec');
+    d.appendChild(el('span', null, label));
+    if (hint) d.appendChild(el('span', null, hint));
+    return d;
+  }
+
+  function tile(src, label, onClick, cls) {
+    const b = document.createElement('button');
+    if (cls) b.className = cls;
+    const img = document.createElement('img');
+    img.alt = label;
+    img.title = label;
+    if (src) img.src = src;
+    b.appendChild(img);
+    b.onclick = onClick;
+    return b;
+  }
+
+  function bindLongPress(node, fn) {
+    let timer = 0;
+    const start = () => { timer = setTimeout(fn, 600); };
+    const cancel = () => { clearTimeout(timer); };
+    node.addEventListener('touchstart', start, { passive: true });
+    node.addEventListener('touchend', cancel);
+    node.addEventListener('touchmove', cancel, { passive: true });
+    node.addEventListener('mousedown', start);
+    node.addEventListener('mouseup', cancel);
+    node.addEventListener('mouseleave', cancel);
+  }
+
+  async function buildStickers() {
     els.grid.innerHTML = '';
+    els.grid.appendChild(section('她的表情', ''));
     for (const s of STICKERS) {
-      const b = document.createElement('button');
-      const img = document.createElement('img');
-      img.src = s.file; img.alt = s.label; img.title = s.label;
-      b.appendChild(img);
-      b.onclick = () => { closeSticker(); sendSticker(s.id); };
+      els.grid.appendChild(tile(s.file, s.label, () => { closeSticker(); sendSticker(s.id); }));
+    }
+
+    els.grid.appendChild(section('我的表情', state.custom.length ? '长按可删除' : '可以加自己的图'));
+    const add = el('button', 'add', '＋');
+    add.onclick = () => els.stickerPick.click();
+    els.grid.appendChild(add);
+
+    for (const c of state.custom.slice(0, 60)) {
+      const b = tile('', '我的表情', () => { closeSticker(); sendSticker(c.id); }, 'del');
+      const img = b.querySelector('img');
+      let src = imgCache.get(c.id);
+      if (!src) { src = await IDB.get(c.id); if (src) imgCache.set(c.id, src); }
+      img.src = src || '';
+      bindLongPress(b, () => removeCustom(c.id));
       els.grid.appendChild(b);
     }
+  }
+
+  async function addCustomStickers(files) {
+    let added = 0;
+    for (const f of files) {
+      if (!f || !f.type.startsWith('image/')) continue;
+      const dataUrl = await shrinkImage(f, 400, 'image/png');
+      if (!dataUrl) continue;
+      const id = 'cs_' + Date.now() + '_' + added;
+      await IDB.put(id, dataUrl);
+      imgCache.set(id, dataUrl);
+      state.custom.unshift({ id, t: Date.now() });
+      added++;
+    }
+    state.custom = state.custom.slice(0, 60);
+    save();
+    await buildStickers();
+    if (added) toast(`加了 ${added} 个表情`);
+    else toast('没读到图片');
+  }
+
+  function removeCustom(id) {
+    if (!confirm('删掉这个表情？')) return;
+    state.custom = state.custom.filter((c) => c.id !== id);
+    imgCache.delete(id);
+    IDB.del(id).catch(() => {});
+    save();
+    buildStickers();
+    toast('删掉了');
   }
   async function sendSticker(id) {
     await addMsg({ who: 'me', kind: 'sticker', src: id, t: Date.now() });
@@ -527,6 +608,11 @@
       if (it) { e.preventDefault(); handleImage(it.getAsFile()); }
     });
     els.filePick.onchange = () => { const f = els.filePick.files[0]; if (f) handleImage(f); els.filePick.value = ''; };
+    els.stickerPick.onchange = async () => {
+      const files = [...els.stickerPick.files];
+      els.stickerPick.value = '';
+      if (files.length) await addCustomStickers(files);
+    };
 
     document.addEventListener('visibilitychange', () => { if (!document.hidden) save(); });
     window.addEventListener('beforeunload', () => { try { localStorage.setItem(LS_KEY, JSON.stringify(state)); } catch (e) {} });
@@ -557,18 +643,23 @@
   }
 
   function compress(file) {
+    return shrinkImage(file, 900, 'image/jpeg', 0.72);
+  }
+
+  /** 按长边缩放到 max，返回 dataURL */
+  function shrinkImage(file, max, type, quality) {
     return new Promise((res) => {
       const img = new Image();
       const url = URL.createObjectURL(file);
       img.onload = () => {
-        const max = 900;
         const r = Math.min(1, max / Math.max(img.width, img.height));
         const c = document.createElement('canvas');
-        c.width = Math.round(img.width * r);
-        c.height = Math.round(img.height * r);
-        c.getContext('2d').drawImage(img, 0, 0, c.width, c.height);
+        c.width = Math.max(1, Math.round(img.width * r));
+        c.height = Math.max(1, Math.round(img.height * r));
+        const ctx = c.getContext('2d');
+        ctx.drawImage(img, 0, 0, c.width, c.height);
         URL.revokeObjectURL(url);
-        res(c.toDataURL('image/jpeg', 0.72));
+        res(c.toDataURL(type || 'image/jpeg', quality));
       };
       img.onerror = () => { URL.revokeObjectURL(url); res(''); };
       img.src = url;
@@ -584,7 +675,7 @@
 
   /* ---------------- 启动 ---------------- */
   async function boot() {
-    buildStickers();
+    await buildStickers();
     bind();
     state.mood = Core.relaxMood(state.mood);
     Core.ensureLife(state, new Date());

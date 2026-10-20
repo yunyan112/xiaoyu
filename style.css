@@ -115,13 +115,28 @@ body{
 }
 .panel.open{transform:none}
 .panel-head{display:flex;justify-content:space-between;align-items:center;color:var(--dim);font-size:13px;padding:4px 2px 10px}
-.grid{display:grid;grid-template-columns:repeat(4,1fr);gap:6px;overflow-y:auto}
+.grid{display:grid;grid-template-columns:repeat(4,1fr);gap:6px;overflow-y:auto;align-content:start}
+.grid .sec{
+  grid-column:1/-1;color:var(--dim);font-size:12px;letter-spacing:.5px;
+  padding:10px 2px 2px;display:flex;justify-content:space-between;align-items:center
+}
+.grid .sec:first-child{padding-top:0}
 .grid button{
   background:none;border:0;padding:4px;border-radius:12px;cursor:pointer;
-  display:grid;place-items:center;
+  display:grid;place-items:center;position:relative;
 }
 .grid button:active{background:#22222a}
 .grid img{width:100%;aspect-ratio:1;object-fit:contain}
+.grid button.add{
+  aspect-ratio:1;border:1px dashed #3a3a42;border-radius:12px;
+  color:#5c5c63;font-size:28px;font-weight:300;
+}
+.grid button.add:active{background:#1e1e24;color:var(--accent)}
+.grid button.del::after{
+  content:"×";position:absolute;right:2px;top:0;font-size:13px;color:#fff;
+  background:rgba(228,87,79,.9);width:17px;height:17px;border-radius:50%;
+  display:grid;place-items:center;line-height:1
+}
 
 /* 设置 */
 .sheet{

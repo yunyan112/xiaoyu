@@ -12,7 +12,9 @@ const STICKERS = [
   { id: '08_night',  file: 'stickers/08_night.png',  emo: 'night',   label: '睡了' },
   { id: '10_turnback', file: 'stickers/10_turnback.png', emo: 'back', label: '不理你' },
   { id: '11_roll',   file: 'stickers/11_roll.png',   emo: 'roll',    label: '打滚' },
-  { id: '12_love',   file: 'stickers/12_love.png',   emo: 'love',    label: '比心' }
+  { id: '12_love',   file: 'stickers/12_love.png',   emo: 'love',    label: '比心' },
+  { id: '13_side',   file: 'stickers/13_side.png',   emo: 'side',    label: '在看你' },
+  { id: '14_peek',   file: 'stickers/14_peek.png',   emo: 'peek',    label: '盯' }
 ];
 
 const STICKER_BY_EMO = STICKERS.reduce((m, s) => (m[s.emo] = s, m), {});
@@ -25,8 +27,8 @@ const STICKER_FOR = {
   sad:     ['sad'],
   sleepy:  ['sleepy', 'night'],
   proud:   ['proud', 'happy'],
-  confused: ['question', 'roll'],
-  missing: ['back', 'roll'],
+  confused: ['question', 'peek', 'roll'],
+  missing: ['back', 'side', 'roll'],
   love:    ['love', 'shy'],
   tired:   ['sleepy'],
   sorry:   ['sad']
