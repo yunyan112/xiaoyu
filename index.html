@@ -80,8 +80,22 @@
         <input id="endpoint" class="field" placeholder="https://你的服务.pages.dev">
         <div class="hint">不填就忽略。填了会优先走中转，用于藏密钥的部署方式。</div>
 
+        <div class="row">
+          <label>她怎么叫你</label>
+          <div class="seg" id="segCall">
+            <button data-v="high">常叫</button><button data-v="mid">偶尔</button><button data-v="off">不叫</button>
+          </div>
+        </div>
+        <div class="hint" id="callHint"></div>
+
         <div class="sep">她记住的事</div>
         <div id="facts" class="facts"></div>
+        <div class="factrow">
+          <input id="factKey" class="field" placeholder="比如：生日" maxlength="6">
+          <input id="factVal" class="field" placeholder="比如：12月24日" maxlength="20">
+          <button class="ghost" id="factAdd">加</button>
+        </div>
+        <div class="hint">点标签可以删。这些会一直带进她的上下文，两周、两百条都不会忘。</div>
 
         <div class="sep">记录</div>
         <div class="btns">

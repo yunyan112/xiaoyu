@@ -107,7 +107,22 @@ const Core = (function () {
     return '轻松';
   }
 
-  /* ---------------- 记忆 ---------------- */
+  /* ---------------- 长期记忆：他说过的要紧话 ---------------- */
+  function remember(state, text) {
+    const t = String(text || '').trim();
+    if (t.length < 8 || t.length > 60) return;
+    if (!/我|今天|明天|昨天|下周|考试|上课|喜欢|讨厌|累|烦|想|家里|工作|同学|朋友|打算|准备/.test(t)) return;
+    const notes = state.notes || [];
+    if (notes.some((n) => n.text === t)) return;
+    notes.push({ t: Date.now(), text: t.slice(0, 40) });
+    state.notes = notes.slice(-80);
+  }
+
+  function recentNotes(state, n = 10) {
+    return (state.notes || []).slice(-n).map((x) => x.text);
+  }
+
+
   function extractFacts(text, facts) {
     const f = Object.assign({}, facts || {});
     let m;
@@ -123,10 +138,10 @@ const Core = (function () {
 
   function updateSummary(state) {
     const topics = (state.summary && state.summary.topics) || [];
-    const last = state.msgs.filter((x) => x.who === 'me' && x.kind === 'text').slice(-1)[0];
+    const said = state.msgs.filter((x) => x.who === 'me' && x.kind === 'text').slice(-3);
     const parts = [];
-    if (topics.length) parts.push('最近聊到：' + topics.slice(-4).join('、'));
-    if (last) parts.push('他刚说：' + last.text.slice(0, 40));
+    if (topics.length) parts.push('最近聊到：' + topics.slice(-6).join('、'));
+    if (said.length) parts.push('他最近说的：' + said.map((m) => m.text.slice(0, 22)).join(' / '));
     const text = parts.join('；');
     return { text: text || '刚认识，还没聊太多', topics: topics.slice(-8), at: Date.now() };
   }
@@ -517,9 +532,9 @@ const Core = (function () {
       if (out.length >= 3) break;
     }
     // 偶尔挂一个 emoji 或颜文字，像真人随手打上去的
-    if (out.length && rnd() < 0.32) {
+    if (out.length && rnd() < 0.4) {
       const i = out.length - 1;
-      const mark = rnd() < 0.66 ? pick(EMOJI) : pick(KAOMOJI);
+      const mark = rnd() < 0.55 ? pick(EMOJI) : pick(KAOMOJI);
       if (!/[a-zA-Z]$/.test(out[i])) out[i] = out[i] + ' ' + mark;
     }
     let sticker = null;
@@ -544,7 +559,7 @@ const Core = (function () {
       .replace(/[#*_~`]/g, '')
       .split(/[|]+|\n+/)
       .map((x) => x.trim())
-      .filter(Boolean)
+      .filter((x) => x && /[\u4e00-\u9fa5a-zA-Z0-9]/.test(x))
       .flatMap((p) => {
         const c = [...p];
         if (c.length <= 25) return [p];
@@ -579,7 +594,7 @@ const Core = (function () {
   return {
     clamp, rnd, pick, pickFresh, hashStr, seeded, dayKey, hm, WEEK, pad,
     isQuiet, mealNow, initialMood, relaxMood, interact, moodLabel, stageFor,
-    extractFacts, FACT_LABEL, updateSummary,
+    extractFacts, FACT_LABEL, updateSummary, remember, recentNotes,
     lifeFor, occurredLife, ensureLife, activity,
     compose, intentOf, splitReply, rhythm, partDelay, stamp,
     T, stickerFor

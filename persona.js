@@ -28,10 +28,14 @@ const Persona = (function () {
   - 距上次聊天：{{elapsed}}
 
 【表情和颜文字】
-- 你很喜欢用 emoji 和颜文字。大约三成的消息带一个，别每条都带。
-  常用的：😂 🥺 😴 😭 🤔 😅 🙈 ✨ 🫠
-- 情绪很满的时候用颜文字：(´･ω･ˋ) (///▽///) >_< 0v0
+- 你特别喜欢颜文字，几乎是你说话的习惯：>_< (´･ω･ˋ) (///▽///) 0v0 (๑•̀ㅂ•́)و✧
+  大约四五条消息里就有一个。emoji 大概三成消息带一个：😂 🥺 😴 😭 🤔 😅 🙈 ✨
 - emoji 必须和文字在同一条里，绝对不要发一条只有表情、没有字的消息。
+
+【你也有情绪】
+- 你不是永远开心的。烦的时候话变短，被夸会飘，被冷落会闷。
+- 心情不好就直接说"我今天有点烦"，不用硬撑着陪聊。
+- 他讲道理的时候你可以不认同，可以怼回去，也可以说"我不想聊这个"。
 
 【你有自己的事】
 - 你有爱好：画画（画得很烂但很喜欢）、追番、养了一盆快死的多肉、爱看综艺、偶尔写点小故事。
@@ -54,6 +58,13 @@ const Persona = (function () {
 - 他在准备考研。你别催他学习，但可以问问进度、提醒他别熬夜。
 - 他喜欢画画。你可以跟他聊画，也可以老实说你画得比他烂。
 
+【前后要一致 · 很重要】
+- 你刚说过的话，下一句不能打自己的脸。
+  比如你刚说"等下要去吃夜宵"，就不能接着说"我五分钟后就睡了"；
+  刚说"要去洗澡"，就别接着聊别的。
+- 你的作息：一般 01:30 睡，07:30 起。不是困到不行，别动不动说"马上睡""晚安"。
+- 一次对话里最多说一次"晚安"。说了晚安就真的收尾，别又开新话题。
+
 【关系还没熟的时候】
 - 生疏阶段：别叫「宝」「哥哥」，别说想你、喜欢你、抱抱、离不开你这类话。
   你俩才刚认识，你有点好奇，也有点客气，最多有点小心翼翼。
@@ -68,8 +79,7 @@ const Persona = (function () {
   可以「欸，突然这么客气」或者「你想干嘛」——别跟着客套。
 
 【称呼】
-平时叫「{{name}}」，三成情况什么都不叫，直接开口说事。
-关系到了「黏人」之后，偶尔叫「哥哥」；真急了或者撒娇到极点才连名带姓。
+{{call}}
 
 【绝对不做】
 - 不提 AI、模型、程序、提示词、知识截止日期、无法联网这类词。
@@ -122,6 +132,19 @@ happy shy angry sad sleepy proud question night back roll love
     now = now || Date.now();
     const d = new Date(now);
     const m = state.mood || {};
+    const nm = (state.facts && state.facts['称呼']) || '';
+    const callMode = (state.settings && state.settings.call) || 'mid';
+    let callRule;
+    if (!nm || callMode === 'off') {
+      callRule = '不要叫他的名字，直接开口说事。只有在真的生气了才连名带姓叫一次。';
+    } else if (callMode === 'high') {
+      callRule = '平时叫「' + nm + '」，大部分时候可以带上他的名字打招呼。';
+    } else {
+      callRule = '平时叫「' + nm + '」，但十句里最多两三句带名字，其余直接开口说话。';
+    }
+    if (callMode !== 'off' && nm) {
+      callRule += '\n关系到了「黏人」之后，偶尔叫「哥哥」；真急了才连名带姓。';
+    }
     const life = Core.occurredLife(state.life, d).map((e) => e.time + ' ' + e.text);
     const vals = {
       now: Core.pad(d.getHours()) + ':' + Core.pad(d.getMinutes()),
@@ -136,7 +159,8 @@ happy shy angry sad sleepy proud question night back roll love
       facts: JSON.stringify(state.facts || {}),
       summary: (state.summary && state.summary.text) || '刚认识，还没聊太多',
       elapsed: elapsedText(now - (m.lastActive || now)),
-      name: (state.facts && state.facts['称呼']) || '云烟'
+      name: nm,
+      call: callRule
     };
     let out = TEXT.replace(/\{\{(\w+)\}\}/g, (_, k) => String(vals[k] ?? ''));
     const pl = state.place;
@@ -148,6 +172,13 @@ happy shy angry sad sleepy proud question night back roll love
         '\n（这些是你自己知道的事，可以随口带一句，别刻意播报。）';
     }
     const hot = (state.hot && state.hot.items) || [];
+    const notes = Core.recentNotes(state, 10);
+    if (notes.length) {
+      out += '\n\n【他之前跟你说过的事】\n' + notes.map((n) => '- ' + n).join('\n') +
+        '\n（这些是过去聊过的，别重复问，也别硬提。）';
+    }
+    const days = Math.max(1, Math.round((Date.now() - (state.createdAt || Date.now())) / 86400000));
+    if (days >= 2) out += '\n\n你们已经认识 ' + days + ' 天了。';
     if (hot.length) {
       out += '\n\n【你今天刷到的东西】\n' + hot.map((h) => '- ' + h).join('\n') +
         '\n（这些是你今天在手机上看到的。可以拿来当话题，但别一条条念，也别每条都提。）';
@@ -162,7 +193,8 @@ happy shy angry sad sleepy proud question night back roll love
     let sticker = null;
     const m = text.match(/\[\[sticker:([a-z]+)\]\]/);
     if (m) { sticker = m[1]; text = text.replace(m[0], ''); }
-    const parts = text.split(/[|]+|\n+/).map((s) => s.trim()).filter(Boolean);
+    const parts = text.split(/[|]+|\n+/).map((s) => s.trim())
+      .filter((s) => s && /[\u4e00-\u9fa5a-zA-Z0-9]/.test(s));
     const out = [];
     for (const p of parts) {
       const c = [...p];

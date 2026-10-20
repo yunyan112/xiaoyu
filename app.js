@@ -15,6 +15,8 @@
     optSticker: $('#optSticker'), endpoint: $('#endpoint'), apiKey: $('#apiKey'), facts: $('#facts'),
     segHot: $('#segHot'), hotHint: $('#hotHint'),
     optPlace: $('#optPlace'), placeHint: $('#placeHint'),
+    factKey: $('#factKey'), factVal: $('#factVal'), factAdd: $('#factAdd'),
+    segCall: $('#segCall'), callHint: $('#callHint'),
     stickerPick: $('#stickerPick'),
     stats: $('#stats'), filePick: $('#filePick'), importPick: $('#importPick'),
     banner: $('#banner'), bannerText: $('#bannerText'), bannerBtn: $('#bannerBtn'),
@@ -34,8 +36,9 @@
       summary: { text: '刚认识，还没聊太多', topics: [], at: now },
       custom: [],
       seen: {},
+      notes: [],
       life: null,
-      settings: { proactive: 'mid', quiet: [2, 7], stickers: true, endpoint: '', apiKey: '', hot: 'off', place: true, lastProactive: 0 },
+      settings: { proactive: 'mid', quiet: [2, 7], stickers: true, endpoint: '', apiKey: '', hot: 'off', place: true, call: 'mid', lastProactive: 0 },
       createdAt: now
     };
   }
@@ -52,6 +55,7 @@
       s.msgs = Array.isArray(s.msgs) ? s.msgs : [];
       s.custom = Array.isArray(s.custom) ? s.custom : [];
       s.seen = s.seen && typeof s.seen === 'object' ? s.seen : {};
+      s.notes = Array.isArray(s.notes) ? s.notes : [];
       return s;
     } catch (e) { return defaults(); }
   }
@@ -270,6 +274,7 @@
     recentSends.push(Date.now());
     recentSends = recentSends.filter((t) => Date.now() - t < 20000);
     state.summary = Core.updateSummary(state);
+    Core.remember(state, text);
     lastUserText = text;
     lastUserKind = 'text';
     save();
@@ -385,7 +390,7 @@
   async function callDirect(text, key, imageId) {
     const history = state.msgs
       .filter((m) => m.kind === 'text')
-      .slice(-17, -1)
+      .slice(-31, -1)
       .map((m) => ({ role: m.who === 'me' ? 'user' : 'assistant', content: m.text }));
 
     // 有图就走视觉模型
@@ -766,6 +771,14 @@
       low: '她只会等你先开口，不再主动发'
     }[s.proactive];
     els.optSticker.checked = !!s.stickers;
+
+    const callMode = s.call || 'mid';
+    [...els.segCall.children].forEach((b) => b.classList.toggle('on', b.dataset.v === callMode));
+    els.callHint.textContent = {
+      high: '大部分时候会带上你的名字',
+      mid: '十句里两三句带名字，其余直接开口（推荐）',
+      off: '完全不叫名字，直接说话，急了才连名带姓'
+    }[callMode];
     els.optPlace.checked = !!s.place;
     if (state.place && state.place.city) {
       els.placeHint.textContent = `${state.place.city} · ${state.place.desc} ${state.place.temp}° · 30 分钟更新一次`;
@@ -865,6 +878,20 @@
       b.onclick = () => { state.settings.proactive = b.dataset.v; save(); renderSettings(); };
     });
     els.optSticker.onchange = () => { state.settings.stickers = els.optSticker.checked; save(); };
+    [...els.segCall.children].forEach((b) => {
+      b.onclick = () => { state.settings.call = b.dataset.v; save(); renderSettings(); };
+    });
+    els.factAdd.onclick = () => {
+      const k = (els.factKey.value || '').trim();
+      const v = (els.factVal.value || '').trim();
+      if (!k || !v) return toast('两格都要填');
+      state.facts[k] = v;
+      els.factKey.value = '';
+      els.factVal.value = '';
+      save();
+      renderSettings();
+      toast('记住了');
+    };
     els.optPlace.onchange = async () => {
       state.settings.place = els.optPlace.checked;
       save();
@@ -998,7 +1025,7 @@
   }
 
   function compress(file) {
-    return shrinkImage(file, 900, 'image/jpeg', 0.72);
+    return shrinkImage(file, 1440, 'image/jpeg', 0.82);
   }
 
   /** 按长边缩放到 max，返回 dataURL */
