@@ -122,6 +122,32 @@ const Core = (function () {
     return (state.notes || []).slice(-n).map((x) => x.text);
   }
 
+  /** 从全部历史里按关键词翻出相关的旧对话（两三百条也翻得动） */
+  function recall(state, query, limit = 4) {
+    const q = String(query || '');
+    if (q.length < 4) return [];
+    const grams = new Set();
+    for (let i = 0; i < q.length - 1; i++) {
+      const g = q.slice(i, i + 2);
+      if (/[\u4e00-\u9fa5a-zA-Z0-9]{2}/.test(g)) grams.add(g);
+    }
+    if (!grams.size) return [];
+
+    const msgs = (state.msgs || []).filter((m) => m.kind === 'text');
+    if (msgs.length <= 40) return [];
+    const recent = new Set(msgs.slice(-22).map((m) => m.t));
+
+    const hits = [];
+    for (const m of msgs) {
+      if (recent.has(m.t)) continue;
+      let score = 0;
+      for (const g of grams) if (String(m.text).includes(g)) score++;
+      if (score >= 2) hits.push({ score, m });
+    }
+    hits.sort((a, b) => b.score - a.score);
+    return hits.slice(0, limit).map((h) => ({ who: h.m.who, text: h.m.text, t: h.m.t }));
+  }
+
 
   function extractFacts(text, facts) {
     const f = Object.assign({}, facts || {});
@@ -594,7 +620,7 @@ const Core = (function () {
   return {
     clamp, rnd, pick, pickFresh, hashStr, seeded, dayKey, hm, WEEK, pad,
     isQuiet, mealNow, initialMood, relaxMood, interact, moodLabel, stageFor,
-    extractFacts, FACT_LABEL, updateSummary, remember, recentNotes,
+    extractFacts, FACT_LABEL, updateSummary, remember, recentNotes, recall,
     lifeFor, occurredLife, ensureLife, activity,
     compose, intentOf, splitReply, rhythm, partDelay, stamp,
     T, stickerFor

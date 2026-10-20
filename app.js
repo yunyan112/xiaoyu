@@ -418,7 +418,7 @@
         max_tokens: 140,
         frequency_penalty: 0.4,
         messages: [
-          { role: 'system', content: Persona.build(state, Date.now()) },
+          { role: 'system', content: Persona.build(state, Date.now(), Core.recall(state, text)) },
           ...history,
           { role: 'user', content: userContent }
         ]
@@ -858,7 +858,10 @@
       });
     }
     const days = Math.max(1, Math.round((Date.now() - state.createdAt) / 86400000));
-    els.stats.textContent = `聊了 ${days} 天 · ${state.mood.count} 句 · 亲密度 ${Math.round(state.mood.i)} · ${state.mood.stage}\n版本 ${VERSION}`;
+    const total = state.msgs.filter((m) => m.kind === 'text').length;
+    els.stats.textContent = `聊了 ${days} 天 · ${state.mood.count} 句 · 亲密度 ${Math.round(state.mood.i)} · ${state.mood.stage}` +
+      `\n记得 ${total} 条对话 · ${(state.notes || []).length} 条摘记 · ${Object.keys(state.facts || {}).length} 个标签` +
+      `\n版本 ${VERSION}`;
   }
 
   function openSheet() {

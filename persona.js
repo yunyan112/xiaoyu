@@ -128,7 +128,7 @@ happy shy angry sad sleepy proud question night back roll love
     return Math.round(ms / 86400e3) + ' 天';
   }
 
-  function build(state, now) {
+  function build(state, now, recalled) {
     now = now || Date.now();
     const d = new Date(now);
     const m = state.mood || {};
@@ -179,6 +179,12 @@ happy shy angry sad sleepy proud question night back roll love
     }
     const days = Math.max(1, Math.round((Date.now() - (state.createdAt || Date.now())) / 86400000));
     if (days >= 2) out += '\n\n你们已经认识 ' + days + ' 天了。';
+
+    if (recalled && recalled.length) {
+      out += '\n\n【从更早的聊天里翻出来的】\n' +
+        recalled.map((r) => '- ' + Core.stamp(r.t) + ' ' + (r.who === 'me' ? '他' : '你') + '：' + String(r.text).slice(0, 30)).join('\n') +
+        '\n（这些是以前的对话。如果和现在的话有关系，可以自然地接一句，别硬扯，也别照念。）';
+    }
     if (hot.length) {
       out += '\n\n【你今天刷到的东西】\n' + hot.map((h) => '- ' + h).join('\n') +
         '\n（这些是你今天在手机上看到的。可以拿来当话题，但别一条条念，也别每条都提。）';
