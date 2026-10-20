@@ -725,19 +725,37 @@
     95: '雷阵雨', 96: '雷阵雨伴冰雹', 99: '强雷暴'
   };
 
+  function placeErrText(code) {
+    if (code === 1) return '权限被拒绝了（去系统设置里给「余小渔」开定位权限）';
+    if (code === 2) return '拿不到位置（手机的定位开关可能没开）';
+    if (code === 3) return '超时了（室内信号差，多试一次）';
+    return '定位失败';
+  }
+
   async function updatePlace(force) {
     if (!state.settings.place) return;
     if (state.place && !force && Date.now() - state.place.at < 30 * 60000) return;
-    if (!navigator.geolocation) return;
+    if (!navigator.geolocation) {
+      state.placeErr = '这台设备不支持定位';
+      save();
+      renderSettings();
+      return;
+    }
 
     const pos = await new Promise((res) => {
       navigator.geolocation.getCurrentPosition(
-        (p) => res({ lat: p.coords.latitude, lon: p.coords.longitude }),
-        () => res(null),
-        { timeout: 9000, maximumAge: 30 * 60000, enableHighAccuracy: false }
+        (p) => res({ ok: true, lat: p.coords.latitude, lon: p.coords.longitude }),
+        (err) => res({ ok: false, code: err && err.code }),
+        { timeout: 20000, maximumAge: 5 * 60000, enableHighAccuracy: false }
       );
     });
-    if (!pos) return;
+
+    if (!pos.ok) {
+      state.placeErr = placeErrText(pos.code);
+      save();
+      renderSettings();
+      return;
+    }
 
     let city = '';
     let temp = null;
@@ -756,6 +774,7 @@
       }
     } catch (e) { /* 同上 */ }
 
+    state.placeErr = '';
     state.place = { at: Date.now(), city, temp, desc, lat: pos.lat, lon: pos.lon };
     save();
     renderSettings();
@@ -782,10 +801,23 @@
     els.optPlace.checked = !!s.place;
     if (state.place && state.place.city) {
       els.placeHint.textContent = `${state.place.city} · ${state.place.desc} ${state.place.temp}° · 30 分钟更新一次`;
+    } else if (state.placeErr) {
+      els.placeHint.textContent = '定位失败：' + state.placeErr;
     } else if (s.place) {
       els.placeHint.textContent = '正在获取…（第一次会让你授权定位）';
     } else {
       els.placeHint.textContent = '关掉之后她不知道你在哪、外面什么天气';
+    }
+    if (s.place && !state.place) {
+      const a = document.createElement('a');
+      a.href = 'javascript:void(0)';
+      a.textContent = ' 重试';
+      a.style.color = 'var(--accent)';
+      a.onclick = async () => {
+        els.placeHint.textContent = '重新定位中…';
+        await updatePlace(true);
+      };
+      els.placeHint.appendChild(a);
     }
     [...els.segHot.children].forEach((b) => b.classList.toggle('on', b.dataset.v === (s.hot || 'off')));
     els.endpoint.value = s.endpoint || '';
@@ -829,7 +861,11 @@
     els.stats.textContent = `聊了 ${days} 天 · ${state.mood.count} 句 · 亲密度 ${Math.round(state.mood.i)} · ${state.mood.stage}\n版本 ${VERSION}`;
   }
 
-  function openSheet() { renderSettings(); els.sheet.classList.remove('hidden'); }
+  function openSheet() {
+    renderSettings();
+    els.sheet.classList.remove('hidden');
+    if (state.settings.place && !state.place) updatePlace(true).catch(() => {});
+  }
   function closeSheet() { els.sheet.classList.add('hidden'); }
 
   /* ---------------- 导入导出 ---------------- */
