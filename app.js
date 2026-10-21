@@ -24,7 +24,8 @@
     stickerPick: $('#stickerPick'),
     stats: $('#stats'), filePick: $('#filePick'), importPick: $('#importPick'),
     banner: $('#banner'), bannerText: $('#bannerText'), bannerBtn: $('#bannerBtn'),
-    btnExport: $('#btnExport'), btnImport: $('#btnImport'), btnReset: $('#btnReset'), btnUpdate: $('#btnUpdate')
+    btnExport: $('#btnExport'), btnImport: $('#btnImport'), btnReset: $('#btnReset'), btnUpdate: $('#btnUpdate'),
+    btnSavePhone: $('#btnSavePhone')
   };
 
   /* ---------------- 存储 ---------------- */
@@ -78,6 +79,16 @@
       const json = JSON.stringify(state);
       try { localStorage.setItem(LS_KEY, json); } catch (e) { toast('存不下了，去设置里导出备份'); }
       try { if (Native && Native.backup) Native.backup(json); } catch (e) { /* 忽略 */ }
+      // 每 15 分钟往「下载」写一份，卸载也删不掉
+      try {
+        if (Native && Native.saveToDownloads && state.msgs.length >= 6) {
+          const now = Date.now();
+          if (now - (state._dlAt || 0) > 15 * 60000) {
+            state._dlAt = now;
+            Native.saveToDownloads(json);
+          }
+        }
+      } catch (e) { /* 忽略 */ }
     }, 120);
   }
 
@@ -1100,6 +1111,12 @@
     };
 
     els.btnExport.onclick = exportData;
+    els.btnSavePhone.onclick = () => {
+      if (!Native || !Native.saveToDownloads) return toast('这个功能在浏览器里用不了');
+      const r = Native.saveToDownloads(JSON.stringify(state));
+      if (r && r.indexOf('失败') === 0) toast(r);
+      else toast('已存到：' + (r || '下载目录'));
+    };
     els.btnUpdate.onclick = async () => {
       toast('正在清缓存…');
       try {
