@@ -3,8 +3,11 @@
   'use strict';
 
   const LS_KEY = 'yuxiaoyu.v1';
-  const VERSION = 'v9 · 2026-10-20 21:30';
+  const VERSION = 'v10 · 2026-10-21';
   const $ = (s) => document.querySelector(s);
+
+  /* 安卓壳提供的原生能力（浏览器里是 null） */
+  const Native = (typeof window !== 'undefined' && window.AndroidBridge) ? window.AndroidBridge : null;
 
   const els = {
     log: $('#log'), input: $('#input'), send: $('#btnSend'), status: $('#status'),
@@ -14,6 +17,7 @@
     segProactive: $('#segProactive'), proactiveHint: $('#proactiveHint'),
     optSticker: $('#optSticker'), endpoint: $('#endpoint'), apiKey: $('#apiKey'), facts: $('#facts'),
     segHot: $('#segHot'), hotHint: $('#hotHint'),
+    optBili: $('#optBili'), biliHint: $('#biliHint'),
     optPlace: $('#optPlace'), placeHint: $('#placeHint'),
     factKey: $('#factKey'), factVal: $('#factVal'), factAdd: $('#factAdd'),
     segCall: $('#segCall'), callHint: $('#callHint'),
@@ -24,6 +28,14 @@
   };
 
   /* ---------------- 存储 ---------------- */
+  // 重装后本地是空的，就先把原生那边存的备份还原回来
+  try {
+    if (Native && Native.restore && !localStorage.getItem(LS_KEY)) {
+      const raw = Native.restore();
+      if (raw && raw.length > 20) localStorage.setItem(LS_KEY, raw);
+    }
+  } catch (e) { /* 忽略 */ }
+
   let state = load();
 
   function defaults() {
@@ -38,7 +50,7 @@
       seen: {},
       notes: [],
       life: null,
-      settings: { proactive: 'mid', quiet: [2, 7], stickers: true, endpoint: '', apiKey: '', hot: 'off', place: true, call: 'mid', lastProactive: 0 },
+      settings: { proactive: 'mid', quiet: [2, 7], stickers: true, endpoint: '', apiKey: '', hot: 'off', bili: false, place: true, call: 'mid', lastProactive: 0 },
       createdAt: now
     };
   }
@@ -63,7 +75,9 @@
   function save() {
     clearTimeout(saveTimer);
     saveTimer = setTimeout(() => {
-      try { localStorage.setItem(LS_KEY, JSON.stringify(state)); } catch (e) { toast('存不下了，去设置里导出备份'); }
+      const json = JSON.stringify(state);
+      try { localStorage.setItem(LS_KEY, json); } catch (e) { toast('存不下了，去设置里导出备份'); }
+      try { if (Native && Native.backup) Native.backup(json); } catch (e) { /* 忽略 */ }
     }, 120);
   }
 
@@ -231,11 +245,39 @@
   }
   const wait = (ms) => new Promise((r) => setTimeout(r, ms));
 
+  /** 两句话像不像：开头相同 / 有 6 字公共片段 / 用字重合度高 */
+  function tooSimilar(a, b) {
+    a = String(a || ''); b = String(b || '');
+    if (!a || !b) return false;
+    if (a === b) return true;
+    if (a.slice(0, 4) === b.slice(0, 4)) return true;
+    if (a.length >= 6 && b.length >= 6) {
+      for (let i = 0; i + 6 <= a.length; i++) {
+        if (b.indexOf(a.slice(i, i + 6)) >= 0) return true;
+      }
+    }
+    const A = new Set(a.split(''));
+    const B = new Set(b.split(''));
+    let inter = 0;
+    A.forEach((c) => { if (B.has(c)) inter++; });
+    return (2 * inter) / (A.size + B.size) >= 0.55;
+  }
+
   async function playReply(parts, stickerId) {
     parts = (parts || []).filter(Boolean);
+
+    // 同一句话最近说过就换掉，别复读
+    const fresh = parts.filter((p) => !recentHer.some((r) => tooSimilar(p, r)));
+    if (!fresh.length && parts.length) {
+      fresh.push(Core.pick(['嗯嗯', '我在呢', '刚走神了', '你接着说']));
+    }
+    parts = fresh;
+
     // 她不发只有表情、没有一个字的消息
     if (!parts.length && stickerId) parts = ['喏'];
     if (!parts.length) return;
+    recentHer = recentHer.concat(parts).slice(-10);
+
     const text = parts.join('|');
     const r = Core.rhythm(text);
     if (r.late) await wait(Math.min(r.late, 9000));
@@ -262,6 +304,9 @@
   let lastStickerSent = null;
   let replyQueued = false;
   let recentSends = [];
+  let burstTexts = [];
+  let burstStart = 0;
+  let recentHer = [];
 
   async function send(text) {
     text = (text || '').trim();
@@ -277,6 +322,9 @@
     Core.remember(state, text);
     lastUserText = text;
     lastUserKind = 'text';
+    if (!burstTexts.length) burstStart = Date.now();
+    burstTexts.push(text);
+    if (burstTexts.length > 6) burstTexts = burstTexts.slice(-6);
     save();
 
     // 她在说话的时候你也可以继续说，说完她会回你最新那句
@@ -303,6 +351,9 @@
       await playReply(['欸，我这会儿有点卡…', '你刚说什么来着'], null);
     } finally {
       busy = false;
+      burstTexts = [];
+      save();
+      planProactive();
       if (replyQueued) { replyQueued = false; scheduleReply(); }
     }
   }
@@ -388,21 +439,27 @@
 
   /* 直连 DeepSeek：不需要任何服务器 */
   async function callDirect(text, key, imageId) {
-    const history = state.msgs
-      .filter((m) => m.kind === 'text')
-      .slice(-31, -1)
+    // 连着发的几句并成一条，别只回最后一句
+    const burst = burstTexts.slice();
+    const joined = burst.length > 1 ? burst.join('\n') : text;
+    const cutoff = burst.length > 1 ? burstStart : Infinity;
+
+    const msgs = state.msgs.filter((m) => m.kind === 'text');
+    const history = msgs
+      .filter((m) => m.t < cutoff)
+      .slice(-31)
       .map((m) => ({ role: m.who === 'me' ? 'user' : 'assistant', content: m.text }));
 
     // 有图就走视觉模型
     let model = 'deepseek-chat';
-    let userContent = text;
+    let userContent = joined;
     if (imageId) {
       let dataUrl = imgCache.get(imageId);
       if (!dataUrl) dataUrl = await IDB.get(imageId);
       if (typeof dataUrl === 'string' && dataUrl.indexOf('data:image') === 0) {
         model = 'deepseek-v4-flash-vision-exp';
         userContent = [
-          { type: 'text', text: text },
+          { type: 'text', text: joined },
           { type: 'image_url', image_url: { url: dataUrl } }
         ];
       }
@@ -780,6 +837,60 @@
     renderSettings();
   }
 
+  /* ---------------- 她刷 B 站（用 DeepSeek 搜索取真实内容） ---------------- */
+  async function searchWeb(key, query, count) {
+    const res = await fetch('https://api.deepseek.com/v1/tools/search', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', Authorization: 'Bearer ' + key },
+      body: JSON.stringify({ query, count, need_content: false })
+    });
+    if (!res.ok) throw new Error('search ' + res.status);
+    const j = await res.json();
+    return (j.results || []);
+  }
+
+  async function ensureBili(force) {
+    if (!state.settings.bili) { state.bili = null; return; }
+    if (!force && state.bili && Date.now() - state.bili.at < 20 * 3600e3) return;
+
+    const key = (state.settings.apiKey || '').trim();
+    if (!key) {
+      state.biliErr = '要填密钥才能搜';
+      save();
+      renderSettings();
+      return;
+    }
+
+    const pool = [
+      'bilibili 热门视频 推荐 site:bilibili.com',
+      'B站 最近很火的视频',
+      'bilibili 热门 生活区 搞笑',
+      'B站 神仙画画 手绘'
+    ];
+    const q = pool[Math.floor(Math.random() * pool.length)];
+
+    try {
+      const list = await searchWeb(key, q, 6);
+      const items = list
+        .filter((r) => r && r.title)
+        .map((r) => ({
+          title: String(r.title).slice(0, 40),
+          url: r.url || '',
+          site: r.site_name || ''
+        }))
+        .filter((x) => x.title.length >= 4)
+        .slice(0, 5);
+      if (!items.length) throw new Error('no results');
+      state.bili = { at: Date.now(), items, q };
+      state.biliErr = '';
+    } catch (e) {
+      state.biliErr = '搜索没成功（' + (e && e.message || '') + '）';
+      if (!state.bili) state.bili = null;
+    }
+    save();
+    renderSettings();
+  }
+
   /* ---------------- 设置 ---------------- */
   function renderSettings() {
     const s = state.settings;
@@ -818,6 +929,29 @@
         await updatePlace(true);
       };
       els.placeHint.appendChild(a);
+    }
+
+    els.optBili.checked = !!s.bili;
+    if (!s.bili) {
+      els.biliHint.textContent = '关掉之后她不会提 B 站';
+    } else if (state.bili && state.bili.items.length) {
+      const t = new Date(state.bili.at);
+      els.biliHint.textContent = `上次刷：${Core.pad(t.getHours())}:${Core.pad(t.getMinutes())} · ${state.bili.items.length} 个视频`;
+    } else if (state.biliErr) {
+      els.biliHint.textContent = state.biliErr;
+    } else {
+      els.biliHint.textContent = '正在刷…';
+    }
+    if (s.bili) {
+      const a = document.createElement('a');
+      a.href = 'javascript:void(0)';
+      a.textContent = ' 现在刷一次';
+      a.style.color = 'var(--accent)';
+      a.onclick = async () => {
+        els.biliHint.textContent = '正在搜…';
+        await ensureBili(true);
+      };
+      els.biliHint.appendChild(a);
     }
     [...els.segHot.children].forEach((b) => b.classList.toggle('on', b.dataset.v === (s.hot || 'off')));
     els.endpoint.value = s.endpoint || '';
@@ -936,6 +1070,12 @@
       save();
       renderSettings();
       if (state.settings.place) await updatePlace(true).catch(() => {});
+    };
+    els.optBili.onchange = async () => {
+      state.settings.bili = els.optBili.checked;
+      save();
+      renderSettings();
+      if (state.settings.bili) await ensureBili(true).catch(() => {});
     };
     [...els.segHot.children].forEach((b) => {
       b.onclick = async () => {
@@ -1094,6 +1234,61 @@
     toast._t = setTimeout(() => els.toast.classList.remove('show'), 2200);
   }
 
+  /* ---------------- 主动通知 ---------------- */
+  function pickProactiveMsgs(n) {
+    const pools = [
+      '欸，你今天在忙什么呀',
+      '刚吃完饭，有点撑',
+      '在图书馆坐着，有点困',
+      '刷到一个特别好笑的东西',
+      '突然有点想跟你说话',
+      '今天风好大，你出门穿够了吗',
+      '在写作业，写不下去',
+      '刚睡醒，脑子还是懵的'
+    ];
+    const out = [];
+    for (let i = 0; i < n; i++) out.push(Core.pick(pools));
+
+    const life = Core.occurredLife(state.life).map((e) => e.text);
+    if (life.length && Math.random() < 0.6) out[0] = '我今天' + Core.pick(life);
+
+    const pl = state.place;
+    if (pl && pl.temp != null) out.push(pl.city + '今天' + pl.temp + '度，你那边冷不冷');
+    return out.slice(0, n);
+  }
+
+  function planProactive() {
+    if (!Native || !Native.notifyAt) return;
+    try { if (Native.cancelNotifications) Native.cancelNotifications(); } catch (e) { /* 忽略 */ }
+    if ((state.settings.proactive || 'mid') === 'low') return;
+
+    const mode = state.settings.proactive || 'mid';
+    const slots = mode === 'high' ? [9.0, 12.5, 20.0] : [12.5, 20.0];
+    const msgs = pickProactiveMsgs(slots.length);
+    const now = Date.now();
+
+    slots.forEach((h, i) => {
+      const d = new Date();
+      d.setHours(Math.floor(h), Math.round((h % 1) * 60), 0, 0);
+      // 两小时内就要响的，挪到明天，别在他刚聊完就弹
+      if (d.getTime() - now < 2 * 3600e3) d.setDate(d.getDate() + 1);
+      try { Native.notifyAt(d.getTime(), msgs[i], i + 1); } catch (e) { /* 忽略 */ }
+    });
+  }
+
+  async function flushPending() {
+    if (!Native || !Native.takePending) return;
+    let raw = '';
+    try { raw = Native.takePending() || ''; } catch (e) { return; }
+    if (!raw) return;
+    let sep = '\n@@\n';
+    try { sep = Native.pendingSep() || sep; } catch (e) { /* 忽略 */ }
+    const list = raw.split(sep).filter((x) => x && x.trim());
+    for (const t of list) {
+      await addMsg({ who: 'her', kind: 'text', text: t.trim(), t: Date.now() });
+    }
+  }
+
   /* ---------------- 启动 ---------------- */
   async function opener() {
     const key = (state.settings.apiKey || '').trim();
@@ -1127,17 +1322,20 @@
     setStatus(Core.activity(new Date()), false);
     setInterval(() => { if (!busy) setStatus(Core.activity(new Date()), false); }, 60000);
     ensureHot().catch(() => {});
+    ensureBili().catch(() => {});
     setTimeout(() => updatePlace().catch(() => {}), 2500);
     setInterval(() => { updatePlace().catch(() => {}); }, 30 * 60000);
 
-    if (!state.msgs.length) {
-      setTimeout(opener, 700);
-    } else {
+    await flushPending();
+    if (state.msgs.length) {
       if (!(state.settings.apiKey || '').trim() && !(state.settings.endpoint || '').trim()) {
         showBanner('还没填密钥，现在是她本地回你');
       }
       setTimeout(maybeProactive, 900);
+    } else {
+      setTimeout(opener, 700);
     }
+    planProactive();
     save();
 
     if ('serviceWorker' in navigator && location.protocol.startsWith('http') && location.hostname !== 'localhost') {

@@ -19,6 +19,8 @@ const Persona = (function () {
   你听的是情绪，不是字面。
 - 不确定怎么接，就说一句普通的话，别硬抖机灵。
 - 网络口头禅（"好家伙""绝了""离谱""战线拉得好长"）不要拿来当回应，那是答非所问。
+- 一句话别连着说两遍。刚说过的意思要再提，就换个说法。
+- 他一次发了好几句，你要一起接住，别只回最后一句。
 
 对照着学：
 他：写题写死了
@@ -146,6 +148,12 @@ happy shy angry sad sleepy proud question night back roll love
     if (hot.length) {
       out += '\n\n【你今天刷到的】\n' + hot.map((h) => '- ' + h).join('\n') +
         '\n（你手机上看到的。能拿来当话题，别一条条念。）';
+    }
+
+    const bili = (state.bili && state.bili.items) || [];
+    if (bili.length) {
+      out += '\n\n【你最近在 B 站刷到的】\n' + bili.map((b) => '- ' + b.title).join('\n') +
+        '\n（可以说"我刚刷到一个视频"，聊聊标题里的内容。别念链接，也别假装看过画面。）';
     }
 
     const notes = Core.recentNotes(state, 10);

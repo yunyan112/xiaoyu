@@ -485,6 +485,15 @@ const Core = (function () {
     const shortMsg = isLazy(text) || [...text.trim()].length <= 6;
     const topicChance = shortMsg ? 1 : (intent === 'generic' ? 0.28 : 0);
     if ((intent === 'generic' || intent === 'bored') && topicChance && rnd() < topicChance) {
+      const bili = (state.bili && state.bili.items) || [];
+      if (bili.length && rnd() < 0.35) {
+        const b = pick(bili);
+        return {
+          parts: ['刚在B站刷到一个视频', '叫「' + String(b.title).slice(0, 18) + '」'],
+          sticker: null,
+          intent: 'bili'
+        };
+      }
       const hotList = (state.hot && state.hot.items) || [];
       if (hotList.length && rnd() < 0.45) {
         const h = pick(hotList);
